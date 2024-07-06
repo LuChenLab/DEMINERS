@@ -1,0 +1,780 @@
+---
+title: "Using classifier to predict"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+library(patchwork)
+library(multiROC)
+library(cowplot)
+```
+
+# 2021-08-11
+
+## Label prediction
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20210811/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20210811.RData")
+```
+
+```{r}
+ROC_Tab_1 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_1 <- as.data.table(ROC_Tab_1, keep.rownames = "read")
+colnames(ROC_Tab_1) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_1))
+ROC_Tab_1$PP <- apply(ROC_Tab_1[, grepl("RTA", colnames(ROC_Tab_1)), with = F], 1, max)
+```
+
+```{r}
+ROC_Tab_1 <- ROC_Tab_1[, colnames(ROC_Tab_1) != "RTA-10", with = F]
+ROC_Tab_1 <- ROC_Tab_1[pred != "RTA-10"]
+ROC_Tab_1[, pred := as.character(pred)]
+```
+
+```{r}
+ROC_Tab_1[, PredSpe := plyr::mapvalues(x = pred, 
+                                       from = c("RTA-08", "RTA-33", "RTA-37", "RTA-27"), 
+                                       to = c("GETV", "SVV", "SARS_Cov_2", "PEDV"))]
+```
+
+## Alignment
+
+```{r}
+aligns <- readRDS("./analysis/07.VirusClassification/02.Prediction/20210811/AlignmentResult.Rds")
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, mean(!Species %in% c("homSap", "MusMus", "pig"))]
+aligns <- aligns[!Species %in% c("homSap", "MusMus", "pig")]
+aligns[, table(Species)]
+```
+
+## Merge 
+
+```{r}
+ROC_Tab_1 <- merge(ROC_Tab_1, aligns, by.x = "read", by.y = "qname")
+```
+
+```{r}
+ROC_Tab_1[, .N, PredSpe]
+```
+
+```{r}
+ROC_Tab_1[, .N, Species]
+```
+
+```{r}
+colnames(ROC_Tab_1) <- plyr::mapvalues(x = colnames(ROC_Tab_1), 
+                                       from = c("RTA-08", "RTA-33", "RTA-37", "RTA-27"), 
+                                       to = c("GETV", "SVV", "SARS_Cov_2", "PEDV"))
+```
+
+```{r}
+lbs <- union(ROC_Tab_1[, unique(Species)], ROC_Tab_1[, unique(PredSpe)])
+ROC_Tab_1[, PredSpe := factor(PredSpe, levels = lbs)]
+ROC_Tab_1[, Species := factor(Species, levels = lbs)]
+```
+
+```{r}
+saveRDS(ROC_Tab_1, "./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20210811.Rds")
+```
+
+
+# 2021-08-25
+
+## Label prediction
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20210825/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20210811.RData")
+```
+
+```{r}
+ROC_Tab_2 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_2 <- as.data.table(ROC_Tab_2, keep.rownames = "read")
+colnames(ROC_Tab_2) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_2))
+ROC_Tab_2$PP <- apply(ROC_Tab_2[, grepl("RTA", colnames(ROC_Tab_2)), with = F], 1, max)
+```
+
+## Alignment
+
+```{r}
+aligns <- readRDS("./analysis/07.VirusClassification/02.Prediction/20210825/AlignmentResult.Rds")
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[!flag %in% c(2048, 2064)]
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, mean(!Species %in% c("HomSap", "MusMus", "SusScr"))]
+aligns <- aligns[!Species %in% c("HomSap", "MusMus", "SusScr")]
+aligns[, table(Species)]
+```
+
+## Merge 
+
+```{r}
+ROC_Tab_2[, PredSpe := plyr::mapvalues(x = pred, 
+                                       from = c("RTA-08", "RTA-33", "RTA-37", "RTA-10", "RTA-27"), 
+                                       to = c("PbergheiANKA", "SVV", "SARS_Cov_2", "PRRSV", "PbergheiANKA"), 
+                                       warn_missing = FALSE)]
+ROC_Tab_2$PbergheiANKA <- ROC_Tab_2$`RTA-08` + ROC_Tab_2$`RTA-27`
+```
+
+```{r}
+ROC_Tab_2 <- merge(ROC_Tab_2, aligns, by.x = "read", by.y = "qname")
+```
+
+```{r}
+colnames(ROC_Tab_2) <- plyr::mapvalues(x = colnames(ROC_Tab_2), 
+                                       from = c("RTA-33", "RTA-37", "RTA-10"), 
+                                       to = c("SVV", "SARS_Cov_2", "PRRSV"))
+ROC_Tab_2[, `RTA-08` := NULL]
+ROC_Tab_2[, `RTA-27` := NULL]
+```
+
+```{r}
+lbs <- union(ROC_Tab_2[, unique(Species)], ROC_Tab_2[, unique(PredSpe)])
+ROC_Tab_2[, PredSpe := as.character(PredSpe)]
+ROC_Tab_2[, Species := as.character(Species)]
+ROC_Tab_2[, PredSpe := factor(PredSpe, levels = lbs)]
+ROC_Tab_2[, Species := factor(Species, levels = lbs)]
+```
+
+```{r}
+saveRDS(ROC_Tab_2, "./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20210825.Rds")
+```
+
+
+# 2021-10-08
+
+## Label prediction
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20211008/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20211008_6.RData")
+```
+
+```{r}
+ROC_Tab_3 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_3 <- as.data.table(ROC_Tab_3, keep.rownames = "read")
+colnames(ROC_Tab_3) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_3))
+ROC_Tab_3$PP <- apply(ROC_Tab_3[, grepl("RTA", colnames(ROC_Tab_3)), with = F], 1, max)
+```
+
+## Alignment
+
+```{r}
+library(GenomicAlignments)
+bams <- paste0("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/align/batch3_6sample/", c("SARS_Cov_2", "PRRSV", "S_enter", "S_cere", "PbergheiANKA", "Ecoli"), ".bam")
+
+aligns <- lapply(bams, function(bamFile) {
+  bam <- GenomicAlignments::readGAlignments(file = bamFile, param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq")))
+  data.table(Species = gsub(".bam", "", basename(bamFile)), as.data.frame(mcols(bam)), Length = qwidth(bam))
+})
+aligns <- do.call(rbind, aligns)
+aligns <- na.omit(aligns)
+```
+
+```{r}
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[!flag %in% c(2048, 2064)]
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, table(Species)]
+```
+
+## Merge 
+
+```{r}
+ROC_Tab_3[, PredSpe := plyr::mapvalues(x = pred, 
+                                       from = c("RTA-16", "RTA-17", "RTA-10", "RTA-32", "RTA-03", "RTA-24"), 
+                                       to = c("S_enter", "Ecoli", "PRRSV", "S_cere", "SARS_Cov_2", "PbergheiANKA"), 
+                                       warn_missing = T)]
+```
+
+```{r}
+ROC_Tab_3 <- merge(ROC_Tab_3, aligns, by.x = "read", by.y = "qname")
+```
+
+```{r}
+colnames(ROC_Tab_3) <- plyr::mapvalues(x = colnames(ROC_Tab_3), 
+                                       from = c("RTA-16", "RTA-17", "RTA-10", "RTA-32", "RTA-03", "RTA-24"), 
+                                       to = c("S_enter", "Ecoli", "PRRSV", "S_cere", "SARS_Cov_2", "PbergheiANKA"))
+```
+
+```{r}
+lbs <- union(ROC_Tab_3[, unique(Species)], ROC_Tab_3[, unique(PredSpe)])
+ROC_Tab_3[, PredSpe := as.character(PredSpe)]
+ROC_Tab_3[, Species := as.character(Species)]
+ROC_Tab_3[, PredSpe := factor(PredSpe, levels = lbs)]
+ROC_Tab_3[, Species := factor(Species, levels = lbs)]
+```
+
+```{r}
+saveRDS(ROC_Tab_3, "./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20211008.Rds")
+```
+
+# ROC
+
+```{r}
+ROC_Tab_1 <- readRDS("./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20210811.Rds")
+ROC_Tab_2 <- readRDS("./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20210825.Rds")
+ROC_Tab_3 <- readRDS("./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20211008.Rds")
+```
+
+
+```{r}
+mcroc1 <- pROC::multiclass.roc(ROC_Tab_1$Species, ROC_Tab_1[, levels(ROC_Tab_1$Species), with = F])
+pROC::auc(mcroc1)
+```
+
+```{r}
+mcroc2 <- pROC::multiclass.roc(ROC_Tab_2$Species, ROC_Tab_2[, levels(ROC_Tab_2$Species), with = F])
+pROC::auc(mcroc2)
+```
+
+```{r}
+mcroc3 <- pROC::multiclass.roc(ROC_Tab_3$Species, ROC_Tab_3[, levels(ROC_Tab_3$Species), with = F])
+pROC::auc(mcroc3)
+```
+
+## 2021-08-11
+
+```{r}
+pred_tab1 <- ROC_Tab_1[, levels(ROC_Tab_1$Species), with = F]
+colnames(pred_tab1) <- paste0(colnames(pred_tab1), "_pred_RF")
+```
+
+```{r}
+true_label1 <- dummies::dummy(ROC_Tab_1$Species, sep = " ")
+true_label1 <- data.frame(true_label1)
+colnames(true_label1) <- gsub("Species.", "", colnames(true_label1))
+colnames(true_label1) <- paste0(colnames(true_label1), "_true")
+```
+
+```{r}
+final_df1 <- cbind(true_label1, pred_tab1)
+```
+
+```{r}
+roc_res1 <- multi_roc(final_df1, force_diag = F)
+pr_res1 <- multi_pr(final_df1, force_diag = T)
+
+plot_roc_df1 <- plot_roc_data(roc_res1)
+plot_pr_df1 <- plot_pr_data(pr_res1)
+```
+
+
+## 2021-08-25
+
+```{r}
+pred_tab2 <- ROC_Tab_2[, levels(ROC_Tab_2$Species), with = F]
+colnames(pred_tab2) <- paste0(colnames(pred_tab2), "_pred_RF")
+```
+
+```{r}
+true_label2 <- dummies::dummy(ROC_Tab_2$Species, sep = " ")
+true_label2 <- data.frame(true_label2)
+colnames(true_label2) <- gsub("Species.", "", colnames(true_label2))
+colnames(true_label2) <- paste0(colnames(true_label2), "_true")
+```
+
+```{r}
+final_df2 <- cbind(true_label2, pred_tab2)
+```
+
+```{r}
+roc_res2 <- multi_roc(final_df2, force_diag = F)
+pr_res2 <- multi_pr(final_df2, force_diag = F)
+
+plot_roc_df2 <- plot_roc_data(roc_res2)
+plot_pr_df2 <- plot_pr_data(pr_res2)
+```
+
+## 2021-10-08
+
+```{r}
+pred_tab3 <- ROC_Tab_3[, levels(ROC_Tab_3$Species), with = F]
+colnames(pred_tab3) <- paste0(colnames(pred_tab3), "_pred_RF")
+```
+
+```{r}
+true_label3 <- dummies::dummy(ROC_Tab_3$Species, sep = " ")
+true_label3 <- data.frame(true_label3)
+colnames(true_label3) <- gsub("Species.", "", colnames(true_label3))
+colnames(true_label3) <- paste0(colnames(true_label3), "_true")
+```
+
+```{r}
+final_df3 <- cbind(true_label3, pred_tab3)
+```
+
+```{r}
+roc_res3 <- multi_roc(final_df3, force_diag = F)
+pr_res3 <- multi_pr(final_df3, force_diag = F)
+
+plot_roc_df3 <- plot_roc_data(roc_res3)
+plot_pr_df3 <- plot_pr_data(pr_res3)
+```
+
+# AUC
+
+```{r}
+AUCs <- rbind(data.table(Batch = "2021-08-11", Type = c("macro", "micro"), AUC = c(roc_res1$AUC$RF$macro, roc_res1$AUC$RF$micro)),
+              data.table(Batch = "2021-08-25", Type = c("macro", "micro"), AUC = c(roc_res2$AUC$RF$macro, roc_res2$AUC$RF$micro)),
+              data.table(Batch = "2021-10-08", Type = c("macro", "micro"), AUC = c(roc_res3$AUC$RF$macro, roc_res3$AUC$RF$micro)))
+AUCs[order(Type)]
+```
+
+```{r}
+plot_roc_df <- rbind(data.table(Date = "2021-08-11", Batch = "Rep 1", plot_roc_df1), 
+                     data.table(Date = "2021-08-25", Batch = "Rep 2", plot_roc_df2), 
+                     data.table(Date = "2021-10-08", Batch = "Rep 3", plot_roc_df3))
+
+plot_pr_df <- rbind(data.table(Date = "2021-08-11", Batch = "Rep 1", plot_pr_df1), 
+                    data.table(Date = "2021-08-25", Batch = "Rep 2", plot_pr_df2), 
+                    data.table(Date = "2021-10-08", Batch = "Rep 3", plot_pr_df3))
+```
+
+```{r fig.width=3, fig.height=3}
+ggplot(plot_roc_df[Group == "Micro" & Batch == "Rep 1"], aes(x = 1 - Specificity, y = Sensitivity)) + 
+  geom_path(size = 1, color = "#E41A1C") + 
+  facet_wrap( ~ Batch) + 
+  annotate(geom = "text", x = 0.7, y = 0.1, size = 5,
+           label = paste0("AUC = ", round(AUCs[Batch == "2021-08-11" & Type == "micro", AUC], 3))) + 
+  theme_bw(base_size = 15) -> p1
+p1
+```
+
+```{r fig.width=3, fig.height=3}
+ggplot(plot_roc_df[Group == "Micro" & Batch == "Rep 2"], aes(x = 1 - Specificity, y = Sensitivity)) + 
+  geom_path(size = 1, color = "#E41A1C") + 
+  facet_wrap( ~ Batch) + 
+  annotate(geom = "text", x = 0.7, y = 0.1, size = 5,
+           label = paste0("AUC = ", round(AUCs[Batch == "2021-08-25" & Type == "micro", AUC], 3)))+ 
+  theme_bw(base_size = 15) -> p2
+p2 <- p2 + theme(axis.title.y = element_blank(), 
+                 axis.text.y = element_blank())
+p2
+```
+
+```{r fig.width=3, fig.height=3}
+ggplot(plot_roc_df[Group == "Micro" & Batch == "Rep 3"], aes(x = 1 - Specificity, y = Sensitivity)) + 
+  geom_path(size = 1, color = "#E41A1C") + 
+  facet_wrap( ~ Batch) + 
+  annotate(geom = "text", x = 0.7, y = 0.1, size = 5,
+           label = paste0("AUC = ", round(AUCs[Batch == "2021-10-08" & Type == "micro", AUC], 3)))+ 
+  theme_bw(base_size = 15) -> p3
+p3 <- p3 + theme(axis.title.y = element_blank(), 
+                 axis.text.y = element_blank())
+p3
+```
+
+```{r fig.width=9, fig.height=3}
+p1 + p2 + p3
+```
+
+
+
+```{r}
+PR_AUCs <- rbind(data.table(Batch = "2021-08-11", Type = c("macro", "micro"), AUC = c(pr_res1$AUC$RF$macro, pr_res1$AUC$RF$micro)),
+              data.table(Batch = "2021-08-25", Type = c("macro", "micro"), AUC = c(pr_res2$AUC$RF$macro, pr_res2$AUC$RF$micro)),
+              data.table(Batch = "2021-10-08", Type = c("macro", "micro"), AUC = c(pr_res3$AUC$RF$macro, pr_res3$AUC$RF$micro)))
+PR_AUCs[order(Type)]
+```
+
+
+```{r fig.width=3, fig.height=3}
+ggplot(plot_pr_df[Group == "Micro" & Batch == "Rep 1"], aes(x = Recall, y = Precision)) + 
+  geom_path(size = 1, color = "#377EB8") + 
+  theme_bw() +
+  ylim(c(0, 1)) + 
+  annotate(geom = "text", x = 0.7, y = 0.1, size = 5,
+           label = paste0("AUC = ", round(PR_AUCs[Batch == "2021-08-11" & Type == "micro", AUC], 3))) + 
+  theme_bw(base_size = 15) -> p4
+p4
+```
+
+```{r fig.width=3, fig.height=3}
+ggplot(plot_pr_df[Group == "Micro" & Batch == "Rep 2"], aes(x = Recall, y = Precision)) + 
+  geom_path(size = 1, color = "#377EB8") + 
+  theme_bw() + 
+  ylim(c(0, 1)) + 
+  annotate(geom = "text", x = 0.7, y = 0.1, size = 5,
+           label = paste0("AUC = ", round(PR_AUCs[Batch == "2021-08-25" & Type == "micro", AUC], 3))) + 
+  theme_bw(base_size = 15) -> p5
+p5 <- p5 + theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+p5
+```
+
+```{r fig.width=3, fig.height=3}
+ggplot(plot_pr_df[Group == "Micro" & Batch == "Rep 3"], aes(x = Recall, y = Precision)) + 
+  geom_path(size = 1, color = "#377EB8") + 
+  ylim(c(0, 1)) + 
+  theme_bw() + 
+  annotate(geom = "text", x = 0.7, y = 0.1, size = 5,
+           label = paste0("AUC = ", round(PR_AUCs[Batch == "2021-10-08" & Type == "micro", AUC], 3))) +
+  theme_bw(base_size = 15) -> p6
+p6 <- p6 + theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+p6
+```
+
+```{r fig.width=9, fig.height=3}
+p4 + p5 + p6
+```
+
+```{r}
+Cutoff1 <- lapply(0:100/100, function(p) {
+  ROC_Tab_1[PP >= p, .(Cutoff = p, Accuracy = mean(PredSpe == Species))]
+})
+Cutoff1 <- do.call(rbind, Cutoff1)
+Cutoff1$Recovery <- mapply(0:100/100, FUN = function(p) ROC_Tab_1[, mean(PP >= p)])
+```
+
+```{r}
+Cutoff2 <- lapply(0:100/100, function(p) {
+  ROC_Tab_2[PP >= p, .(Cutoff = p, Accuracy = mean(PredSpe == Species))]
+})
+Cutoff2 <- do.call(rbind, Cutoff2)
+Cutoff2$Recovery <- mapply(0:100/100, FUN = function(p) ROC_Tab_2[, mean(PP >= p)])
+```
+
+```{r}
+Cutoff3 <- lapply(0:100/100, function(p) {
+  ROC_Tab_3[PP >= p, .(Cutoff = p, Accuracy = mean(PredSpe == Species))]
+})
+Cutoff3 <- do.call(rbind, Cutoff3)
+Cutoff3$Recovery <- mapply(0:100/100, FUN = function(p) ROC_Tab_3[, mean(PP >= p)])
+```
+
+```{r}
+Cutoffs <- rbind(data.table(Date = "2021-08-11", Batch = "Rep 1", Cutoff1), 
+                 data.table(Date = "2021-08-25", Batch = "Rep 2", Cutoff2), 
+                 data.table(Date = "2021-10-08", Batch = "Rep 3", Cutoff3))
+```
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 1"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), sec.axis = dup_axis(name = "Recovery (%)")) +
+  labs(y = "Accuracy (%)") + 
+  theme_bw(base_size = 15) + 
+  theme(axis.title.y.left = element_text(color = "#1B9E77"), 
+        axis.text.y.left = element_text(color = "#1B9E77"), 
+        axis.ticks.y.left = element_line(color = "#1B9E77"), 
+        axis.text.y.right = element_blank(), 
+        axis.title.y.right = element_blank(), 
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> p7
+p7
+```
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 2"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), sec.axis = dup_axis(name = "Recovery (%)")) + 
+  labs(y = "Accuracy (%)") + 
+  theme_bw(base_size = 15) + 
+  theme(axis.text.y = element_blank(), 
+        axis.title.y = element_blank(), 
+        axis.ticks.y.left = element_line(color = "#1B9E77"),
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> p8
+p8
+```
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 3"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), sec.axis = dup_axis(name = "Recovery (%)")) + 
+  labs(y = "Accuracy (%)") + 
+  theme_bw(base_size = 15) + 
+  theme(axis.text.y.right = element_text(color = "#D95F02"), 
+        axis.text.y.left = element_blank(),
+        axis.title.y.right = element_text(color = "#D95F02"), 
+        axis.title.y.left = element_blank(),
+        axis.ticks.y.left = element_line(color = "#1B9E77"),
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> p9
+p9
+```
+
+```{r fig.width=9, fig.height=3}
+p7 + p8 + p9
+```
+
+```{r fig.width=9, fig.height=9}
+(p1 + p2 + p3) / (p4 + p5 + p6) / (p7 + p8 + p9)
+ggsave("./analysis/07.VirusClassification/03.Merge/03.Performance/Performance_of_VirusClassification_V1.pdf", width = 9, height = 9)
+```
+
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 1"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  labs(y = "Accuracy (%)") + 
+  scale_x_continuous(position = "top") + 
+  lims(y = c(92, 100)) +
+  theme_half_open(font_size = 15) +
+  theme(axis.text.y.left = element_text(color = "#1B9E77"), 
+        axis.title.y.left = element_text(color = "#1B9E77"), 
+        axis.ticks.y = element_line(color = "#1B9E77"), 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) -> g1
+
+ggplot(Cutoffs[Batch == "Rep 1"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), position = "right") + 
+  labs(y = "Recovery (%)") + 
+  theme_half_open(font_size = 15) + 
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_line(color = "grey90"),
+        panel.grid.minor = element_line(color = "grey95"), 
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> g2
+
+aligned_plots <- align_patches(plotlist = list(g1, g2), align="hv", axis="tblr")
+p7_2 <- ggdraw(aligned_plots[[2]]) + draw_plot(aligned_plots[[1]])
+p7_2
+```
+
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 2"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  labs(y = "Accuracy (%)") + 
+  scale_x_continuous(position = "top") + 
+  lims(y = c(92, 100)) +
+  theme_half_open(font_size = 15) +
+  theme(axis.text.y.left = element_blank(), 
+        axis.title.y.left = element_blank(), 
+        axis.ticks.y = element_line(color = "#1B9E77"), 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) -> g3
+
+ggplot(Cutoffs[Batch == "Rep 2"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), position = "right") + 
+  labs(y = "Recovery (%)") + 
+  theme_half_open(font_size = 15) + 
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_line(color = "grey90"),
+        panel.grid.minor = element_line(color = "grey95"), 
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> g4
+
+aligned_plots <- align_patches(plotlist = list(g3, g4), align="hv", axis="tblr")
+p8_2 <- ggdraw(aligned_plots[[2]]) + draw_plot(aligned_plots[[1]])
+p8_2
+```
+
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 3"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  labs(y = "Accuracy (%)") + 
+  scale_x_continuous(position = "top") + 
+  lims(y = c(92, 100)) +
+  theme_half_open(font_size = 15) +
+  theme(axis.text.y.left = element_blank(), 
+        axis.title.y.left = element_blank(), 
+        axis.ticks.y = element_line(color = "#1B9E77"), 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) -> g5
+
+ggplot(Cutoffs[Batch == "Rep 3"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), position = "right") + 
+  labs(y = "Recovery (%)") + 
+  theme_half_open(font_size = 15) + 
+  theme(axis.text.y = element_text(color = "#D95F02"),
+        axis.title.y = element_text(color = "#D95F02"),
+        panel.grid.major = element_line(color = "grey90"),
+        panel.grid.minor = element_line(color = "grey95"), 
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> g6
+
+aligned_plots <- align_patches(plotlist = list(g5, g6), align="hv", axis="tblr")
+p9_2 <- ggdraw(aligned_plots[[2]]) + draw_plot(aligned_plots[[1]])
+p9_2
+```
+
+
+```{r fig.width=9, fig.height=6}
+(p1 + p2 + p3) / (p4 + p5 + p6)
+ggsave("./analysis/07.VirusClassification/03.Merge/03.Performance/Performance_of_VirusClassification_V2_up.pdf", width = 9, height = 6)
+```
+
+```{r fig.width=9, fig.height=3}
+p7_2 + p8_2 + p9_2 + plot_layout(widths = c(1.24, 1, 1.24))
+ggsave("./analysis/07.VirusClassification/03.Merge/03.Performance/Performance_of_VirusClassification_V2_down.pdf", width = 9.64, height = 3)
+```
+
+
+```{r}
+ConfuMat <- lapply(list(ROC_Tab_1, ROC_Tab_2, ROC_Tab_3), function(y) {
+  cM <- y[, confusionMatrix(PredSpe, Species)]
+  ConfuMat <- data.table(Accuracy = cM$overall[1], 
+                         Sensitivity = apply(cM$byClass, 2, function(x) mean(x, na.rm = T))[1], 
+                         Specificity = apply(cM$byClass, 2, function(x) mean(x, na.rm = T))[2], 
+                         Precision = apply(cM$byClass, 2, function(x) mean(x, na.rm = T))[5], 
+                         Recall = apply(cM$byClass, 2, function(x) mean(x, na.rm = T))[6], 
+                         F1 = apply(cM$byClass, 2, function(x) mean(x, na.rm = T))[7])
+  return(ConfuMat)
+})
+```
+
+
+```{r}
+ConfuMat <- do.call(rbind, ConfuMat)
+getwd()
+openxlsx::write.xlsx(ConfuMat, "./analysis/07.VirusClassification/03.Merge/03.Performance/confusionMatrix.xlsx")
+```
+
+
+```{r}
+ROC_Tab_3[, confusionMatrix(PredSpe, Species)]
+ROC_Tab_3[, confusionMatrix(PredSpe, Species)]$byClass
+```
+
+```{r}
+library(caret)
+set.seed(9560)
+ROC_Tab_2_upsample <- upSample(x = ROC_Tab_2, y = ROC_Tab_2$Species)
+ROC_Tab_2_upsample <- as.data.table(ROC_Tab_2_upsample)
+```
+
+```{r}
+ROC_Tab_2_upsample[, mean(PP >= 0.9)*100]
+ROC_Tab_2_upsample[PP >= 0.9, confusionMatrix(PredSpe, Species)]
+ROC_Tab_2_upsample[PP >= 0.9, confusionMatrix(PredSpe, Species)]$byClass
+```
+
+
+```{r}
+library(caret)
+set.seed(9560)
+ROC_Tab_3_upsample <- upSample(x = ROC_Tab_3, y = ROC_Tab_3$Species)
+ROC_Tab_3_upsample <- as.data.table(ROC_Tab_3_upsample)
+```
+
+```{r}
+ROC_Tab_3_upsample[PP >= 0.9, confusionMatrix(PredSpe, Species)]
+ROC_Tab_3_upsample[PP >= 0.9, confusionMatrix(PredSpe, Species)]$byClass
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 1"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), size = 1, color = "#1B9E77") + 
+  labs(y = "Accuracy (%)") + 
+  scale_x_continuous(position = "top") + 
+  lims(y = c(92, 100)) +
+  theme_half_open(font_size = 15) +
+  theme(axis.text.y.left = element_text(color = "#1B9E77"), 
+        axis.title.y.left = element_text(color = "#1B9E77"), 
+        axis.ticks.y = element_line(color = "#1B9E77"), 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank()) -> g1
+
+ggplot(Cutoffs[Batch == "Rep 1"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Recovery * 100), size = 1, color = "#D95F02") + 
+  scale_y_continuous(limits = c(0, 100), position = "right") + 
+  labs(y = "Recovery (%)") + 
+  theme_half_open(font_size = 15) + 
+  theme(axis.text.y = element_text(color = "#D95F02"),
+        axis.title.y = element_text(color = "#D95F02"),
+        panel.grid.major = element_line(color = "grey90"),
+        panel.grid.minor = element_line(color = "grey95"), 
+        axis.title.x = element_blank(), 
+        axis.ticks.y.right = element_line(color = "#D95F02")) -> g2
+
+aligned_plots <- align_plots(plotlist = list(g1, g2), align="hv", axis="tblr")
+p92 <- ggdraw(aligned_plots[[2]]) + draw_plot(aligned_plots[[1]])
+p92
+```
+
+
+
+
+
+
+
+```{r fig.width=4, fig.height=3}
+ggplot(Cutoffs[Batch == "Rep 3"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Accuracy * 100), color = "red") + 
+  labs(y = "Accuracy (%)") + 
+  theme_half_open(font_size = 15) + 
+  theme(axis.text.y.right = element_text(color = "blue"), 
+        axis.title.y.right = element_text(color = "blue"), 
+        axis.ticks.y = element_line(color = "blue")) -> g1
+
+ggplot(Cutoffs[Batch == "Rep 3"], aes(x = Cutoff)) + 
+  geom_path(aes(y = Recovery * 100), color = "blue") + 
+  scale_y_continuous(limits = c(0, 100), position = "right") + 
+  scale_y_continuous(position = "right") +
+  labs(y = "Recovery (%)") + 
+  theme_half_open(font_size = 15) + 
+  theme(axis.text.y = element_text(color = "blue"),
+        panel.grid.major = element_line(color = "grey90"),
+        panel.grid.minor = element_line(color = "grey95"),
+        axis.title.y = element_text(color = "blue"), 
+        axis.ticks.y = element_line(color = "blue")) -> g2
+```
+
+```{r fig.width=4, fig.height=3}
+aligned_plots <- align_plots(plotlist = list(g1, g2), align="hv", axis="tblr")
+ggdraw(aligned_plots[[2]]) + draw_plot(aligned_plots[[1]])
+```
+
+
+
+
+
+

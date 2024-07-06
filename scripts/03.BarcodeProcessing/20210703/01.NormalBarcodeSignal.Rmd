@@ -1,0 +1,189 @@
+---
+title: "fast5 signal processing"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = 'center')
+```
+
+```{r required packages}
+library(PorexploreR)
+library(data.table)
+library(rhdf5)
+library(dplyr)
+library(ggplot2)
+library(smoother)
+library(parallel)
+library(spatstat)
+library(Cairo)
+library(changepoint)
+```
+
+```{r}
+readFast5 <- function(file, NT) {
+  reads <- rhdf5::h5ls(file = file, recursive = FALSE)$name
+  parallel::mclapply(X = reads, FUN = function(read) {
+    h5_signals <- rhdf5::h5read(file = file, name = paste0(read, "/Raw"), read.attributes = TRUE)
+    signal_meta <- rhdf5::h5read(file, paste0(read, "/channel_id"), read.attributes = TRUE)
+    
+    range <- attr(signal_meta, "range")
+    
+    digitisation <- attr(signal_meta, "digitisation")
+    scaling <- range/digitisation
+    offset <- attr(signal_meta, "offset")
+    sampling_rate <- attr(signal_meta, "sampling_rate")
+    
+    new("Squiggle", raw_signal = as.integer(h5_signals[[1]]), 
+        range = as.numeric(range), digitisation = as.integer(digitisation), 
+        offset = as.integer(offset), sampling_rate = as.integer(sampling_rate), 
+        scaling = as.numeric(scaling))
+  }, mc.cores = NT)
+}
+
+normalize_signal <- function(sig) {
+  med = median(sig)
+  mad = median(abs(sig - med))
+  (sig - med) / max(0.01, (mad * 1.4826))
+}
+
+barcode_scale <- function(s, len = 100) {
+  if(length(s) < len) {
+    times <- ceiling(len/length(s))
+    s <- rep(s, each = times)
+  }
+  
+  b <- as.numeric(cut(seq_along(s), breaks = len, include.lowest = T))
+  se <- as.numeric(by(s, b, FUN = median))
+  return(se)
+}
+
+BinCollapse <- function(sig, BinFun = "median") {
+  steps <- diff(c(sig[1], sig))
+  ir <- data.table::as.data.table(sort(c(IRanges::IRanges(steps > 0), IRanges::IRanges(steps <= 0))))
+  data.table::setnames(ir, "width", "width_up")
+  ir$width_down <- c(ir[-1, width_up], 0)
+  
+  ir[, left := end - width_up/2]
+  ir[, right := end + width_down/2]
+  
+  bin <- cut(seq_along(sig), breaks = c(0, ir$left, length(sig)), labels = FALSE)
+  dre <- c(1, ifelse(as.numeric(S4Vectors::runValue(S4Vectors::Rle(steps > 0))) == 1, 1, -1))
+  
+  if(BinFun == "median") {
+    res <- as.numeric(do.call(c, by(sig, bin, FUN = function(x) rep(median(x), length(x)))))
+  }
+  
+  if(BinFun == "mean") {
+    res <- as.numeric(do.call(c, by(sig, bin, FUN = function(x) rep(mean(x), length(x)))))
+  }
+  
+  if(BinFun == "max") {
+    binmax <- as.numeric(by(sig, bin, FUN = function(x) max(x)))
+    binmin <- as.numeric(by(sig, bin, FUN = function(x) min(x)))
+    binmax[which(dre != 1)] <- binmin[which(dre != 1)]
+    res <- rep(binmax, S4Vectors::runLength(S4Vectors::Rle(bin)))
+  }
+  return(res)
+}
+
+GetBarcode3 <- function(read, length = 20000, plot = TRUE) {
+  raw_sig <- PorexploreR::signal(read)
+  if(length(raw_sig) > length) raw_sig <- raw_sig[seq_len(length)]
+  
+  Mat <- data.table::data.table(x = seq_along(raw_sig), norm = normalize_signal(raw_sig))
+  Mat[, dema := smoother::smth(norm, method = "dema", n = 20)]
+  
+  cp2 <- Mat[!is.na(dema), suppressWarnings(changepoint::cpt.meanvar(dema, class = FALSE))[[1]]] + Mat[!is.na(dema), min(x)]
+  
+  ansmean <- tryCatch(suppressWarnings(changepoint::cpt.meanvar(Mat[cp2:nrow(Mat), dema], penalty = "Asymptotic", pen.value = 1e-10, method = "PELT")), error = function(e) NA)
+  if(is.na(ansmean)) return(NULL)
+  
+  whichBin <- which.max(diff(c(0, head(ansmean@cpts, 4))))
+  polyA_Pos <- ifelse(whichBin == 1, cp2, ansmean@cpts[whichBin - 1] + cp2)
+  polyA_Sig <- ansmean@param.est$mean[whichBin]
+  
+  if(polyA_Pos < 2500) {
+    BCSs <- NULL
+  } else {
+    if(mean(Mat[round(polyA_Pos*0.75):polyA_Pos, dema] < polyA_Sig) > 0.9) {
+      # Mat[1:polyA_Pos,  smth := smoother::smth(norm, method = "dema", n = round(polyA_Pos/400), v = 1)]
+      # BCSs <- Mat[!is.na(smth), smth]
+      BCSs <- Mat[1:polyA_Pos, norm]
+      if(plot) {
+        Mat[1:polyA_Pos,  smth := smoother::smth(norm, method = "dema", n = round(polyA_Pos/400), v = 1)]
+        Mat[, plot(x, norm, type = "s")]
+        Mat[, lines(x, smth, type = "s", col = 2)]
+        abline(v = polyA_Pos, col = 3, lty = 2, lwd = 3)
+      }
+    } else {
+      if(mean(Mat[round(cp2*0.75):cp2, dema] < polyA_Sig) > 0.9) {
+        BCSs <- Mat[1:cp2, norm]
+        if(plot) {
+          Mat[1:polyA_Pos,  smth := smoother::smth(norm, method = "dema", n = round(polyA_Pos/400), v = 1)]
+          Mat[, plot(x, norm, type = "s")]
+          Mat[1:cp2, lines(x, smth, type = "s", col = 2)]
+          abline(v = cp2, col = 3, lty = 2, lwd = 3)
+        }
+      } else {
+        BCSs <- NULL
+      }
+    }
+  }
+  
+  if(!is.null(BCSs)) {
+    if(length(BCSs) < 2100) {
+      BCSs <- NULL
+    }
+  }
+  
+  return(BCSs)
+}
+```
+
+# Read fast5
+
+```{r}
+read2gene <- fread("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/02.BamReadsSplit/read2gene_20210703.txt")
+read2gene[, read := paste("read", read, sep = "_")]
+setkey(read2gene, read)
+
+dir_f5 <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/Rawdata/20210703/no_sample/20210703_1132_MN26652_FAP34145_f2607660/fast5_pass"
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/01.NormalBarcodeSignal/20210703"
+file1 <- file.path(dir_f5, list.files(dir_f5)[1])
+
+fast5_1 <- readFast5(file = file1, NT = 2)
+
+names(fast5_1) <- gsub("", "", h5ls(file = file1, recursive = FALSE)$name)
+fast5_1 <- fast5_1[names(fast5_1) %in% read2gene[, read]]
+
+for(i in seq_along(list.files(dir_f5))) {
+  print(paste(i, "of", length(list.files(dir_f5)), "start:", date()))
+  file1 <- file.path(dir_f5, list.files(dir_f5)[i])
+  fast5_1 <- readFast5(file = file1, NT = 4)
+  names(fast5_1) <- gsub("", "", h5ls(file = file1, recursive = FALSE)$name)
+  fast5_1 <- fast5_1[names(fast5_1) %in% read2gene[, read]]
+  barcode <- mclapply(fast5_1, function(x) GetBarcode3(read = x, plot = F), mc.cores = 40)
+  barcode <- barcode[!mapply(is.null, barcode)]
+  save(barcode, file = file.path(dir_bs, gsub(".fast5$", ".signal", list.files(dir_f5)[i])))
+}
+```
+
+# Get barcode after gaussian 
+
+```{r fig.width=20, fig.height=4}
+system.time(bc <- GetBarcode3(read = fast5_1[[1]], plot = T))
+bc <- GetBarcode3(read = fast5_1[[2]], plot = T)
+bc <- GetBarcode3(read = fast5_1[[3]], plot = T)
+bc <- GetBarcode3(read = fast5_1[[21]], plot = T)
+```
+

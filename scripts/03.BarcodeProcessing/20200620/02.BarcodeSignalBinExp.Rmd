@@ -1,0 +1,77 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = 'center')
+```
+
+```{r required packages}
+library(PorexploreR)
+library(data.table)
+library(rhdf5)
+library(dplyr)
+library(ggplot2)
+library(smoother)
+library(parallel)
+library(spatstat)
+library(changepoint)
+library(segclust2d)
+library(scales)
+library(pbapply)
+```
+
+```{r}
+MyChangePoint <- function(sig, MinLength = 10, ChangePoints = 68, StateStat = "Mean") {
+  if(is.null(StateStat) | is.na(StateStat)) {
+    stop("StateStat must be one of Mean or Median")
+  }
+  
+  if(length(StateStat) != 1) {
+    stop("StateStat must be one of Mean or Median")
+  }
+  
+  if(!is.element(StateStat, c("Mean", "Median"))) {
+    stop("StateStat must be one of Mean or Median")
+  }
+  
+  cp0 <- suppressWarnings(changepoint::cpt.meanvar(data = sig, 
+                                                   Q = ChangePoints, 
+                                                   penalty = "Manual", 
+                                                   method = "BinSeg", 
+                                                   class = FALSE, 
+                                                   minseglen = MinLength, 
+                                                   param.estimates = FALSE, 
+                                                   pen.value = 0.0001)) - 0.5
+  bins <- cut(seq_along(sig), c(0, cp0, length(sig)), include.lowest = T, labels = FALSE)
+  
+  if(StateStat == "Mean") {
+    bin_sig <- as.numeric(by(sig, bins, mean))
+  } else {
+    bin_sig <- as.numeric(by(sig, bins, median))
+  }
+  return(bin_sig)
+}
+```
+
+```{r}
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/01.NormalBarcodeSignal/20200620"
+files <- list.files(path = dir_bs, pattern = ".signal", full.names = TRUE)
+
+pblapply(FUN = function(x) {
+  load(x)
+  barcode <- mclapply(barcode, function(x) MyChangePoint(sig = x, ChangePoints = 98, MinLength = 10, StateStat = "Mean"), mc.cores = 40)
+  save(barcode, file = gsub("01.NormalBarcodeSignal", "02.BarcodeSignalBinExp", x))
+  rm("barcode")
+}, files)
+```

@@ -1,0 +1,123 @@
+---
+title: "Performance of DeePlexiCon barcodes classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = 'center')
+```
+
+```{r}
+library(data.table)
+library(caret)
+```
+
+# Accuracy validation
+
+```{r}
+load(file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/01.Model/DeePlexiCon_Classifier_V1.RData")
+TestData <- readRDS("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/DeePlexiCon_TestSet.Rds")
+```
+
+```{r}
+Fit1
+```
+
+```{r}
+Fit1$finalModel
+```
+
+```{r}
+ROC_Tab <- data.frame(obs = TestData$Class, 
+                      predict(Fit1, TestData, type = "prob"), 
+                      pred = predict(Fit1, newdata = TestData))
+```
+
+```{r}
+postResample(pred = ROC_Tab$pred, obs = ROC_Tab$obs)
+```
+
+```{r}
+confusionMatrix(data = ROC_Tab$pred, reference = ROC_Tab$obs)
+```
+
+```{r}
+lapply(seq(5, 95, 5)/100, function(i) {
+  ReadsPercent <- mean(apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) >= i)*100
+  ROC_Tab_PPT <- ROC_Tab[apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) > i, ]
+  Accu <- postResample(pred = ROC_Tab_PPT$pred, obs = ROC_Tab_PPT$obs)[1]
+  data.frame(ReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- do.call(rbind, Cutoff_Select)
+Cutoff_Select$Cutoff <- seq(5, 95, 5)/100
+```
+
+```{r}
+library(ggplot2)
+ggplot(Cutoff_Select, aes(ReadsPercent, Accuracy)) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  labs(y = "Accuracy", x = "Percentage of successful reads") + 
+  theme_classic() + 
+  theme(legend.position = "none", 
+        axis.title = element_text(size = 16), 
+        axis.text = element_text(size = 12)) + 
+  geom_hline(yintercept = 0.99) + 
+  geom_vline(xintercept = 92)
+```
+
+```{r}
+table(Fit1$trainingData$.outcome)
+```
+
+# DeePlexiCon
+
+```{r}
+R2BC <- readRDS("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/DeePlexiCon_TestSet_Meta.Rds")
+```
+
+```{r}
+deeplexicon_output <- fread("/mnt/raid62/BetaCoV/Person/tangchao/analysis/DrictRNA/deeplexicon/conda/output1.tsv")
+deeplexicon_output[, ReadID := paste0("read_", ReadID)]
+deeplexicon_output <- merge(deeplexicon_output, R2BC[, .(read, Name, gene)], by.x = "ReadID", by.y = "read")
+setnames(deeplexicon_output, "Barcode", "pred")
+setnames(deeplexicon_output, "Name", "obs")
+```
+
+```{r}
+deeplexicon_output[, pred := plyr::mapvalues(x = pred, from = c("bc_1", "bc_2", "bc_3", "bc_4"), to = c("D-BC1", "D-BC2", "D-BC3", "D-BC4"))]
+```
+
+```{r}
+table(deeplexicon_output$pred)
+```
+```{r}
+mean(deeplexicon_output$pred != "unknown")
+```
+
+```{r}
+deeplexicon_output[, pred := factor(pred, levels = c("D-BC1", "D-BC2", "D-BC3", "D-BC4", "unknown"))]
+deeplexicon_output[, obs := factor(obs, levels = c("D-BC1", "D-BC2", "D-BC3", "D-BC4", "unknown"))]
+```
+
+```{r}
+postResample(pred = deeplexicon_output$pred, obs = deeplexicon_output$obs)
+mean(deeplexicon_output$pred == deeplexicon_output$obs)
+```
+
+```{r}
+mean(deeplexicon_output[pred != "unknown", ]$pred == deeplexicon_output[pred != "unknown", ]$obs)
+```
+
+```{r}
+confusionMatrix(data = deeplexicon_output$pred, reference = deeplexicon_output$obs)
+```

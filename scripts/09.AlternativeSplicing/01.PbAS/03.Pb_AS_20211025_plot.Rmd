@@ -1,0 +1,174 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r}
+library(GenomicFeatures)
+library(data.table)
+library(ICAS)
+library(BioHelper)
+library(Biostrings)
+library(ggSashimi)
+library(Biostrings)
+library(GenomicAlignments)
+```
+
+
+```{r}
+txdb <- GenomicFeatures::makeTxDbFromGFF("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+```
+
+```{r}
+bams <- list.files("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean", "bam$", full.names = T)
+```
+
+```{r}
+params <- Rsamtools::ScanBamParam(flag = Rsamtools::scanBamFlag(isNotPassingQualityControls = FALSE), 
+                                  what = c("mapq", "flag"), 
+                                  mapqFilter = 1)
+map0 <- lapply(bams, function(x) {
+  GenomicAlignments::readGAlignments(file = x, param = params, use.names = FALSE)
+})
+```
+
+```{r}
+SJ_Ns <- lapply(map0, function(x) {
+  sj08 <- unlist(junctions(x))
+  data.table(SJ = names(table(as.character(sj08))), N = as.numeric(table(as.character(sj08))))
+})
+for(i in seq_along(bams)) colnames(SJ_Ns[[i]])[2] <- gsub(".minimap2genome.bam", "", basename(bams))[i]
+
+SJ_N <- Reduce(function(x, y) merge(x, y, by = "SJ", all = TRUE), SJ_Ns)
+countTab <- data.frame(SJ_N[, -1], row.names = SJ_N[[1]])
+countTab[is.na(countTab)] <- 0
+```
+
+```{r}
+colanno <- data.frame(row.names = colnames(countTab), Cell = rep(c("tro", "sch"), 3))
+
+icas <- ICASDataSetFromMatrix(countData = countTab, colData = colanno, design = "Cell")
+icas <- PSICalculater(icas, MMJF = 0.01, MinSumSpliceSite = 3)
+
+icas_psi <- as.data.table(as.data.frame(icas@psi), keep.rownames = "SJ")
+
+colnames(countTab) <- paste0(colnames(countTab), "_Count")
+icas_psi <- merge(icas_psi, as.data.table(countTab, keep.rownames = "SJ"), by = "SJ")
+```
+
+```{r}
+psi <- as.data.table(as.data.frame(icas@psi), keep.rownames = "SJ")
+psi <- melt(psi, id.vars = "SJ", variable.name = "Sample", value.name = "PSI")
+psi <- merge(psi, as.data.table(colanno, keep.rownames = "Sample"))
+```
+
+```{r}
+DS <- psi[, .(P = tryCatch(wilcox.test(PSI ~ Cell)$p.value, error = function(e) 2)), by = SJ]
+DS <- DS[P <= 1]
+DS$P.adjust <- p.adjust(DS$P, method = "BH")
+PSI_mean <- merge(psi[Cell == "tro" & !is.na(PSI), .(PSI_tro = mean(PSI, na.rm = T)), SJ], 
+                  psi[Cell == "sch" & !is.na(PSI), .(PSI_sch = mean(PSI, na.rm = T)), SJ])
+DS <- merge(PSI_mean, DS)
+DS <- DS[order(P)]
+DS[, dPSI := abs(PSI_tro - PSI_sch)]
+```
+
+```{r}
+View(head(na.omit(merge(DS, icas_psi, by = "SJ"))[order(dPSI, decreasing = TRUE)], 20))
+```
+
+```{r}
+icas_psi[SJ == "PbANKA_13_v3:1514358-1514473:-"]
+```
+
+
+```{r fig.width=20}
+ggSashimi(BamFile = "/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/RTA-03.minimap2genome.bam", 
+          txdb = txdb, 
+          query = "PbANKA_12_v3:1323826-1325418:+", 
+          minMapQuality = 0, MinSJ = 1)
+```
+
+
+```{r}
+ggSashimi(BamFile = "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/Pb_0825_RTA08.minimap2genome.bam", 
+          txdb = txdb, 
+          query = "PbANKA_13_v3:1514358-1514473:-", 
+          ExtendWidth = 500, 
+          minMapQuality = 0, MinSJ = 1)
+
+
+TxDb <- GenomicFeatures::makeTxDbFromGFF("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+gtf_rg <- rtracklayer::readGFFAsGRanges("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+
+target_gr <- gtf_rg[subjectHits(findOverlaps(as("PbANKA_08_v3:192001-192091:-", "GRanges"), gtf_rg))]
+
+TxByGene <- unlist(transcriptsBy(TxDb, by = "gene"))
+TxByGene <- data.table(Transcript = mcols(TxByGene)$tx_name, Geneid = names(TxByGene))
+
+tbg <- transcriptsBy(TxDb, by = "gene")
+ebt <- exonsBy(x = TxDb, by = "tx", use.names = TRUE)
+
+
+genomeBam <- "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA08.minimap2genome.bam"
+
+gr <- target_gr[1]
+
+params <- Rsamtools::ScanBamParam(flag = Rsamtools::scanBamFlag(isNotPassingQualityControls = FALSE), 
+                                  what = c("mapq", "flag"), 
+                                  which = gr,
+                                  mapqFilter = 0)
+map0 <- GenomicAlignments::readGAlignments(file = genomeBam, param = params, use.names = TRUE)
+length(map0)
+map0 <- map0[qwidth(map0) < 2000]
+
+SegM <- cigarRangesAlongReferenceSpace(cigar(map0), ops = "M", with.ops = TRUE, pos = start(map0))
+SegM1 <- GRanges(seqnames = as.character(runValue(seqnames(map0))), ranges = unlist(SegM), reads = rep(names(map0), mapply(length, SegM)))
+
+p1 <- ggbio::autoplot(SegM1, geom = "alignment", group.selfish = FALSE, ylab = NULL, legend = FALSE)
+p1
+
+
+genomeBam <- "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA27.minimap2genome.bam"
+map0 <- GenomicAlignments::readGAlignments(file = genomeBam, param = params, use.names = TRUE)
+length(map0)
+map0 <- map0[qwidth(map0) < 2000]
+
+SegM <- cigarRangesAlongReferenceSpace(cigar(map0), ops = "M", with.ops = TRUE, pos = start(map0))
+SegM2 <- GRanges(seqnames = as.character(runValue(seqnames(map0))), ranges = unlist(SegM), reads = rep(names(map0), mapply(length, SegM)))
+
+p2 <- ggbio::autoplot(SegM2, geom = "alignment", group.selfish = FALSE, ylab = NULL, legend = FALSE)
+p2
+
+library(biovizBase)
+gr.txdb <- crunch(TxDb, which = range(c(SegM1, SegM2)))
+grl <- split(gr.txdb, gr.txdb$tx_name)
+p0 <- ggbio::autoplot(grl, aes(type = type))
+p0
+
+library(ggbio)
+tracks(sch = p1, tro = p2, p0, heights = c(9, 2, 1))
+
+# PbANKA_08_v3:192001-192095:-
+# PbANKA_08_v3:192001-192091:-
+```
+
+
+

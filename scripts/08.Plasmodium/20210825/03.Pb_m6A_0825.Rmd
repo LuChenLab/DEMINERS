@@ -1,0 +1,231 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+```
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20210825/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20210811.RData")
+```
+
+```{r}
+ROC_Tab_2 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_2 <- as.data.table(ROC_Tab_2, keep.rownames = "read")
+colnames(ROC_Tab_2) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_2))
+ROC_Tab_2$PP <- apply(ROC_Tab_2[, grepl("RTA", colnames(ROC_Tab_2)), with = F], 1, max)
+```
+
+```{r}
+ROC_Pb <- ROC_Tab_2[pred %in% c("RTA-08", "RTA-27") & PP > 0.3]
+```
+
+```{r}
+aligns <- readRDS("./analysis/07.VirusClassification/02.Prediction/20210825/AlignmentResult.Rds")
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[!flag %in% c(2048, 2064)]
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, table(Species)]
+aligns[, mean(!Species %in% c("HomSap", "MusMus", "SusScr"))]
+aligns <- aligns[!Species %in% c("HomSap", "MusMus", "SusScr")]
+```
+
+```{r}
+ROC_Pb <- ROC_Pb[read %in% aligns$qname]
+```
+
+```{r}
+library(ShortRead)
+fastq <- fread("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch2_fq/DRS_virus2.fastq", sep = "\t", header = F)
+fa <- RNAStringSet(fastq[fastq[, grep("^@", V1)] + 1, ][[1]])
+qual <- PhredQuality(fastq[grep("^@", V1) + 3][[1]])
+names(qual) <- gsub("^@", "", fastq[grep("^@", V1)][[1]])
+names(fa) <- gsub("^@", "", fastq[grep("^@", V1)][[1]])
+fastq <- QualityScaledDNAStringSet(x = fa, quality = qual)
+```
+
+```{r}
+Pb_fq_27 <- fastq[paste0("read_", mapply(function(x) x[1], strsplit(names(fastq), " "))) %in% ROC_Pb[pred == "RTA-27", read]]
+Pb_fq_08 <- fastq[paste0("read_", mapply(function(x) x[1], strsplit(names(fastq), " "))) %in% ROC_Pb[pred == "RTA-08", read]]
+```
+
+```{r}
+writeQualityScaledXStringSet(Pb_fq_08, paste0("./analysis/08.m6A/01.Plasmodium/20211008/02.SplitFastq/Pb_0825_RTA08.fastq"))
+writeQualityScaledXStringSet(Pb_fq_27, paste0("./analysis/08.m6A/01.Plasmodium/20211008/02.SplitFastq/Pb_0825_RTA27.fastq"))
+```
+
+```{bash}
+nanopolish index -d /mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch2_fq/20210825_1639_MN35929_FAQ89985_6914f112/fast5_pass \
+                 -s /mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch2_fq/20210825_1639_MN35929_FAQ89985_6914f112/sequencing_summary_FAQ89985_7e754e64.txt \
+                    /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA08.fastq
+
+nanopolish index -d /mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch2_fq/20210825_1639_MN35929_FAQ89985_6914f112/fast5_pass \
+                 -s /mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch2_fq/20210825_1639_MN35929_FAQ89985_6914f112/sequencing_summary_FAQ89985_7e754e64.txt \
+                    /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA27.fastq
+
+
+minimap2 -ax splice -t 10 /mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA08.fastq | samtools sort -@ 4 | samtools view -b > /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.bam
+minimap2 -ax splice -t 10 /mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA27.fastq | samtools sort -@ 4 | samtools view -b > /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.bam
+
+samtools index /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.bam
+samtools index /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.bam
+
+
+nanopolish eventalign -t 1 --scale-events -n \
+                      -r /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA08.fastq \
+                      -b /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.bam \
+                      -g /mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta > /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.eventalign.tsv
+
+nanopolish eventalign -t 1 --scale-events -n \
+                      -r /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA27.fastq \
+                      -b /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.bam \
+                      -g /mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta > /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.eventalign.tsv
+
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/mCaller.py \
+                      -m GATC -r /mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta \
+                      -d /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/r95_twobase_model_NN_6_m6A.pkl \
+                      -e /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.eventalign.tsv \
+                      -f /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA08.fastq -b A 
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/mCaller.py \
+                      -m GATC -r /mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta \
+                      -d /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/r95_twobase_model_NN_6_m6A.pkl \
+                      -e /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.eventalign.tsv \
+                      -f /mnt/raid61/Personal_data/tangchao/Temp/20211008/Pb_0825_RTA27.fastq -b A 
+
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.eventalign.diffs.6 -d 15 -t 0
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.eventalign.diffs.6 -d 5 -t 0
+```
+
+
+```{r}
+Pb_08 <- fread("/mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.methylation.summary.bed")
+Pb_27 <- fread("/mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.methylation.summary.bed")
+```
+
+```{r}
+Pb_Meth <- merge(Pb_08, Pb_27, by = c("V1", "V2", "V3", "V4", "V6"))
+colnames(Pb_Meth) <- c("Seqnames", "Start", "End", "Motif", "Strand", "MethRatio08", "Count08", "MethRatio27", "Count27")
+```
+
+```{r}
+Pb_Meth[order(abs(MethRatio27 - MethRatio08))]
+```
+
+```{r}
+Pb_MethRatio <- melt(Pb_Meth, id.vars = c("Seqnames", "Start", "End", "Motif", "Strand"), measure.vars = c("MethRatio08", "MethRatio27"), variable.name = "Sample", value.name = "MethRatio")
+Pb_Count <- melt(Pb_Meth, id.vars = c("Seqnames", "Start", "End", "Motif", "Strand"), measure.vars = c("Count08", "Count27"), variable.name = "Sample", value.name = "Count")
+Pb_MethRatio[, Sample := gsub("MethRatio", "RTA-", Sample)]
+Pb_Count[, Sample := gsub("Count", "RTA-", Sample)]
+Pb_Meth2 <- merge(Pb_MethRatio, Pb_Count, by = c("Seqnames", "Start", "End", "Motif", "Strand", "Sample"))
+```
+
+
+
+
+```{r}
+Pb_27_Spe <- Pb_27[!V2 %in% Pb_08$V2]
+Pb_08_Spe <- Pb_08[!V2 %in% Pb_27$V2]
+```
+
+```{r}
+colnames(Pb_27_Spe) <- c("Seqnames", "Start", "End", "Motif", "MethRatio", "Strand", "Count")
+colnames(Pb_08_Spe) <- c("Seqnames", "Start", "End", "Motif", "MethRatio", "Strand", "Count")
+```
+
+```{r}
+library(Biostrings)
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+names(ref) <- mapply(function(x) x[1], strsplit(names(ref), " "))
+```
+
+```{r}
+library(GenomicAlignments)
+bam08 <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA08.bam")
+
+cov08 <- coverage(bam08[strand(bam08) == "+"])
+cov08 <- lapply(seq_along(cov08), function(i) {
+  data.table(Seqnames = names(cov08)[i], POS = seq_len(length(cov08[[i]])), Depth = as.numeric(cov08[[i]]))
+})
+cov08_p <- data.table(do.call(rbind, cov08), Strand = "+")
+
+cov08 <- coverage(bam08[strand(bam08) == "-"])
+cov08 <- lapply(seq_along(cov08), function(i) {
+  data.table(Seqnames = names(cov08)[i], POS = seq_len(length(cov08[[i]])), Depth = as.numeric(cov08[[i]]))
+})
+cov08_n <- data.table(do.call(rbind, cov08), Strand = "-")
+cov08 <- rbind(cov08_p, cov08_n)
+setkey(cov08, Seqnames, POS, Strand)
+```
+
+
+```{r}
+bam27 <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/Pb_0825_RTA27.bam")
+cov27 <- coverage(bam27[strand(bam27) == "+"])
+cov27 <- lapply(seq_along(cov27), function(i) {
+  data.table(Seqnames = names(cov27)[i], POS = seq_len(length(cov27[[i]])), Depth = as.numeric(cov27[[i]]))
+})
+cov27_p <- data.table(do.call(rbind, cov27), Strand = "+")
+
+cov27 <- coverage(bam27[strand(bam27) == "-"])
+cov27 <- lapply(seq_along(cov27), function(i) {
+  data.table(Seqnames = names(cov27)[i], POS = seq_len(length(cov27[[i]])), Depth = as.numeric(cov27[[i]]))
+})
+cov27_n <- data.table(do.call(rbind, cov27), Strand = "-")
+cov27 <- rbind(cov27_p, cov27_n)
+setkey(cov27, Seqnames, POS, Strand)
+```
+
+
+```{r}
+Pb_27_Spe <- merge(Pb_27_Spe, cov08, by.x = c("Seqnames", "End", "Strand"), by.y = c("Seqnames", "POS", "Strand"))
+setcolorder(Pb_27_Spe, c("Seqnames", "Start", "End", "Motif", "MethRatio", "Strand", "Count", "Depth"))
+setnames(Pb_27_Spe, "Depth", "Depth_08")
+```
+
+```{r}
+Pb_08_Spe <- merge(Pb_08_Spe, cov27, by.x = c("Seqnames", "End", "Strand"), by.y = c("Seqnames", "POS", "Strand"))
+setcolorder(Pb_08_Spe, c("Seqnames", "Start", "End", "Motif", "MethRatio", "Strand", "Count", "Depth"))
+setnames(Pb_08_Spe, "Depth", "Depth_27")
+Pb_08_Spe <- Pb_08_Spe[Depth_27 >= 10]
+```
+
+
+
+```{r}
+ggplot(Pb_Meth2, aes(x = Sample, y = MethRatio)) + 
+  geom_boxplot() + 
+  geom_point()
+```
+
+
+

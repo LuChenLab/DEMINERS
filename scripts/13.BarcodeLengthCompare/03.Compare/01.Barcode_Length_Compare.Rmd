@@ -1,0 +1,137 @@
+---
+title: "Using classifier to predict"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+knitr::opts_knit$set(base.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+library(patchwork)
+library(multiROC)
+library(pROC)
+library(cowplot)
+library(dummies)
+```
+
+```{r}
+PredList <- mclapply(gsub("Barcode_", "", gsub(".RData", "", list.files("./analysis/13.BarcodeLengthCompare/Version1/01.ModelingData"))), function(b) {
+  load(paste0("./analysis/13.BarcodeLengthCompare/Version1/01.ModelingData/Barcode_", b, ".RData"))
+  Fit <- readRDS(paste0("./analysis/13.BarcodeLengthCompare/Version1/02.Models/Barcode_", b, ".Rds"))
+  ROC_Tab <- data.table(read = row.names(TestData), pred = predict(Fit, newdata = TestData))
+  ROC_Tab <- merge(TestReads, ROC_Tab, by = "read")
+  return(ROC_Tab)
+}, mc.cores = 6)
+names(PredList) <- gsub("Barcode_", "", gsub(".RData", "", list.files("./analysis/13.BarcodeLengthCompare/Version1/01.ModelingData")))
+```
+
+```{r}
+Performs <- lapply(PredList, function(x) {
+  lapply(1:10, FUN = function(i) {
+    set.seed(i)
+    sub <- x[, .SD[sample(.N, 10000), ], Class]
+    cM <- sub[, confusionMatrix(pred, Class)]
+    data.table(Accuracy = cM$overall[1], 
+               Sensitivity = apply(cM$byClass, 2, mean)[1], 
+               Specificity = apply(cM$byClass, 2, mean)[2], 
+               Precision = apply(cM$byClass, 2, mean)[5], 
+               Recall = apply(cM$byClass, 2, mean)[6], 
+               F1 = apply(cM$byClass, 2, mean)[7])
+  }) -> Performs
+  do.call(rbind, Performs)
+})
+Performs <- data.table(L = rep(names(PredList), mapply(nrow, Performs)), do.call(rbind, Performs))
+Performs[, L := gsub("L", "", L)]
+Performs[grepl("2", L), L := paste0(L, "nt")]
+```
+
+```{r}
+my_compa <- list(c("20nt", "22nt"), c("22nt", "24nt"), c("24nt", "26nt"), c("26nt", "28nt"), c("26nt", "Mix"))
+```
+
+```{r fig.height=4, fig.width=4}
+ggplot(Performs, aes(x = L, y = Accuracy)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  labs(x = "Barcode length")
+ggsave("./analysis/13.BarcodeLengthCompare/Version1/03.Compare/Accuracy.pdf", width = 3.5, height = 3.5)
+```
+
+```{r fig.height=4, fig.width=4}
+ggplot(Performs, aes(x = L, y = Sensitivity)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  labs(x = "Barcode length")
+ggsave("./analysis/13.BarcodeLengthCompare/Version1/03.Compare/Sensitivity.pdf", width = 3.5, height = 3.5)
+```
+
+```{r fig.height=4, fig.width=4}
+ggplot(Performs, aes(x = L, y = Specificity)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  labs(x = "Barcode length")
+ggsave("./analysis/13.BarcodeLengthCompare/Version1/03.Compare/Specificity.pdf", width = 3.5, height = 3.5)
+```
+
+```{r fig.height=4, fig.width=4}
+ggplot(Performs, aes(x = L, y = Precision)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  labs(x = "Barcode length")
+ggsave("./analysis/13.BarcodeLengthCompare/Version1/03.Compare/Precision.pdf", width = 3.5, height = 3.5)
+```
+
+```{r fig.height=4, fig.width=4}
+ggplot(Performs, aes(x = L, y = Recall)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  labs(x = "Barcode length")
+ggsave("./analysis/13.BarcodeLengthCompare/Version1/03.Compare/Recall.pdf", width = 3.5, height = 3.5)
+```
+
+```{r fig.height=4, fig.width=4}
+ggplot(Performs, aes(x = L, y = F1)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  labs(x = "Barcode length")
+ggsave("./analysis/13.BarcodeLengthCompare/Version1/03.Compare/F1.pdf", width = 3.5, height = 3.5)
+```

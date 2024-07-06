@@ -1,0 +1,241 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r}
+library(GenomicFeatures)
+library(ICAS)
+library(BioHelper)
+library(Biostrings)
+txdb <- GenomicFeatures::makeTxDbFromGFF("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+names(ref) <- mapply(function(x) x[1], strsplit(names(ref), " "))
+
+introns <- unlist(intronsByTranscript(txdb))
+
+SJ <- data.table(SJ = as.character(introns), 
+           start = paste0(as.character(seqnames(introns)), ":", start(introns)), 
+           end = paste0(as.character(seqnames(introns)), ":", end(introns)))
+SJ[, .N, start][N > 1]
+SJ[, .N, end][N > 1]
+SJ[start == "PbANKA_01_v3:438321"]
+SJ[end == "PbANKA_01_v3:439388"]
+
+introns <- BioHelper::DonorSiteSeq(introns, Genome = ref, exon = 0, intron = 2)
+introns <- BioHelper::AcceptorSiteSeq(introns, Genome = ref, exon = 0, intron = 2)
+
+
+v5 <- mapply(with(introns, paste0(DonorMotif, AcceptorMotif)), FUN = function(x) {
+  if(x == "GTAG") {
+    1
+  } else {
+    if(x == "GCAG") {
+      3
+    } else {
+      if(x == "ATAC") {
+        5
+      } else {
+        0
+      }
+    }
+  }
+})
+
+intronsTab <- data.table(V1 = as.character(seqnames(introns)), 
+                         V2 = start(introns), 
+                         V3 = end(introns), 
+                         V4 = mapply(as.character(strand(introns)), FUN = function(x) ifelse(x == "+", 1, 2)), 
+                         V5 = v5, 
+                         V6 = 1, 
+                         V7 = 100, 
+                         V8 = 0, 
+                         V9 = 50)
+
+fwrite(intronsTab, "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/GTF_SJ.txt", col.names = F, row.names = F, quote = F, sep = "\t")
+
+writeXStringSet(ref, "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+```
+
+```{bash}
+
+cd /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean
+pyenv shell 3.7.4
+
+
+for i in Pb_0825_RTA08 Pb_0825_RTA27; 
+do
+  samtools view -h /mnt/raid61/Personal_data/tangchao/Temp/20211008/04.minimap2/$i.bam > $i.sam
+done
+
+
+# Step2: ONT reads correction
+
+for i in Pb_0825_RTA08 Pb_0825_RTA27; 
+do
+	python /mnt/data1/tangchao/software/TranscriptClean/TranscriptClean-2.0.2/TranscriptClean.py \
+	       --threads 8 \
+	       --sam /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/$i.sam \
+	       --genome /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/PlasmoDB-53_PbergheiANKA_Genome.fasta \
+	       --outprefix /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/$i \
+	       --tmpDir /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/temp > /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/$i.TranscriptClean.log 2>&1
+done
+
+
+for i in Pb_0825_RTA08 Pb_0825_RTA27;
+do
+	#statements
+	minimap2 -ax splice -t 10 /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/PlasmoDB-53_PbergheiANKA_Genome.fasta /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/$i\_clean.fa | samtools sort -@ 4 | samtools view -b > /mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/$i.minimap2genome.bam
+done
+```
+
+
+```{r}
+library(Biostrings)
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+library(GenomicAlignments)
+bam08 <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA08.minimap2genome.bam")
+bam27 <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA27.minimap2genome.bam")
+```
+
+
+```{r}
+library(GenomicFeatures)
+library(ICAS)
+library(BioHelper)
+library(Biostrings)
+library(ggSashimi)
+library(Biostrings)
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+library(GenomicAlignments)
+bam08 <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA08.minimap2genome.bam")
+bam27 <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA27.minimap2genome.bam")
+
+sj08 <- unlist(junctions(bam08))
+sj08 <- data.table(SJ = names(table(as.character(sj08))), N = as.numeric(table(as.character(sj08))))
+sj27 <- unlist(junctions(bam27))
+sj27 <- data.table(SJ = names(table(as.character(sj27))), N = as.numeric(table(as.character(sj27))))
+
+sj08$start <- with(as(sj08[, SJ], "GRanges"), paste0(seqnames, ":", start))
+sj08$end <- with(as(sj08[, SJ], "GRanges"), paste0(seqnames, ":", end))
+
+sj27$start <- with(as(sj27[, SJ], "GRanges"), paste0(seqnames, ":", start))
+sj27$end <- with(as(sj27[, SJ], "GRanges"), paste0(seqnames, ":", end))
+
+
+assj08 <- sj08[start %in% sj08[, .N, start][N > 1, start] | end %in% sj08[, .N, end][N > 1, end]]
+assj27 <- sj27[start %in% sj27[, .N, start][N > 1, start] | end %in% sj27[, .N, end][N > 1, end]]
+
+countTab <- merge(sj08[, .(SJ, N)], sj27[, .(SJ, N)], by = "SJ", all = TRUE)
+countTab <- data.frame(countTab[, -1], row.names = countTab[[1]])
+colnames(countTab) <- c("RTA08", "RTA27")
+countTab[is.na(countTab)] <- 0
+
+colanno <- data.frame(row.names = colnames(countTab), Cell = c("sch", "tro"))
+
+icas <- ICASDataSetFromMatrix(countData = countTab, colData = colanno, design = "Cell")
+icas <- PSICalculater(icas, MMJF = 0.01, MinSumSpliceSite = 3)
+
+
+icas_psi <- as.data.table(as.data.frame(icas@psi), keep.rownames = "SJ")
+icas_psi <- na.omit(icas_psi)
+
+colnames(countTab) <- paste0(colnames(countTab), "_Count")
+icas_psi <- merge(icas_psi, as.data.table(countTab, keep.rownames = "SJ"), by = "SJ")
+
+icas_psi[, dPSI := abs(RTA27 - RTA08)]
+icas_psi[order(dPSI)]
+
+ggSashimi(BamFile = "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/Pb_0825_RTA27.minimap2genome.bam", 
+          txdb = txdb, 
+          query = "PbANKA_08_v3:191992-192720:-", 
+          minMapQuality = 0, MinSJ = 1)
+
+ggSashimi(BamFile = "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean/Pb_0825_RTA08.minimap2genome.bam", 
+          txdb = txdb, 
+          query = "PbANKA_08_v3:191992-192720:-", 
+          ExtendWidth = 500, 
+          minMapQuality = 0, MinSJ = 1)
+
+
+
+
+
+TxDb <- GenomicFeatures::makeTxDbFromGFF("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+gtf_rg <- rtracklayer::readGFFAsGRanges("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+
+target_gr <- gtf_rg[subjectHits(findOverlaps(as("PbANKA_08_v3:192001-192091:-", "GRanges"), gtf_rg))]
+
+TxByGene <- unlist(transcriptsBy(TxDb, by = "gene"))
+TxByGene <- data.table(Transcript = mcols(TxByGene)$tx_name, Geneid = names(TxByGene))
+
+tbg <- transcriptsBy(TxDb, by = "gene")
+ebt <- exonsBy(x = TxDb, by = "tx", use.names = TRUE)
+
+
+genomeBam <- "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA08.minimap2genome.bam"
+
+gr <- target_gr[1]
+
+params <- Rsamtools::ScanBamParam(flag = Rsamtools::scanBamFlag(isNotPassingQualityControls = FALSE), 
+                                  what = c("mapq", "flag"), 
+                                  which = gr,
+                                  mapqFilter = 0)
+map0 <- GenomicAlignments::readGAlignments(file = genomeBam, param = params, use.names = TRUE)
+length(map0)
+map0 <- map0[qwidth(map0) < 2000]
+
+SegM <- cigarRangesAlongReferenceSpace(cigar(map0), ops = "M", with.ops = TRUE, pos = start(map0))
+SegM1 <- GRanges(seqnames = as.character(runValue(seqnames(map0))), ranges = unlist(SegM), reads = rep(names(map0), mapply(length, SegM)))
+
+p1 <- ggbio::autoplot(SegM1, geom = "alignment", group.selfish = FALSE, ylab = NULL, legend = FALSE)
+p1
+
+
+genomeBam <- "/mnt/raid61/Personal_data/tangchao/Temp/20211008/05.TranscriptClean//Pb_0825_RTA27.minimap2genome.bam"
+map0 <- GenomicAlignments::readGAlignments(file = genomeBam, param = params, use.names = TRUE)
+length(map0)
+map0 <- map0[qwidth(map0) < 2000]
+
+SegM <- cigarRangesAlongReferenceSpace(cigar(map0), ops = "M", with.ops = TRUE, pos = start(map0))
+SegM2 <- GRanges(seqnames = as.character(runValue(seqnames(map0))), ranges = unlist(SegM), reads = rep(names(map0), mapply(length, SegM)))
+
+p2 <- ggbio::autoplot(SegM2, geom = "alignment", group.selfish = FALSE, ylab = NULL, legend = FALSE)
+p2
+
+
+
+
+
+library(biovizBase)
+gr.txdb <- crunch(TxDb, which = range(c(SegM1, SegM2)))
+grl <- split(gr.txdb, gr.txdb$tx_name)
+p0 <- ggbio::autoplot(grl, aes(type = type))
+p0
+
+library(ggbio)
+tracks(sch = p1, tro = p2, p0, heights = c(9, 2, 1))
+
+# PbANKA_08_v3:192001-192095:-
+# PbANKA_08_v3:192001-192091:-
+```
+
+
+

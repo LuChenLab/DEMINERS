@@ -1,0 +1,139 @@
+---
+title: "Using classifier to predict"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+knitr::opts_knit$set(base.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(caret)
+library(pbapply)
+library(parallel)
+library(multiROC)
+library(doParallel)
+library(data.table)
+```
+
+```{r}
+library(doParallel)
+cl <- makePSOCKcluster(20)
+registerDoParallel(cl)
+```
+
+```{r}
+load("./analysis/11.Classifiers/01.ModelingData/Barcode_4.RData")
+rm(list = c("TrainingReads", "TestReads", "TestData")); gc()
+```
+
+```{r}
+set.seed(123)
+TrainingData <- as.data.table(TrainingData)[, .SD[sort(sample(.N, 10000))], Class]
+```
+
+```{r}
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10)
+```
+
+# naive_bayes
+
+```{r}
+set.seed(825)
+naive_bayes <- train(Class ~ ., 
+                     data = TrainingData,
+                     preProc = c("center", "scale", "YeoJohnson", "nzv"),
+                     method = "naive_bayes",
+                     trControl = fitControl,
+                     verbose = FALSE,
+                     tuneLength = 10,
+                     metric = "Accuracy",
+                     allowParallel = TRUE)
+saveRDS(naive_bayes, file = paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/NB_B4.Rds"))
+```
+
+# rf
+
+```{r}
+set.seed(825)
+rf <- train(Class ~ ., 
+            data = TrainingData,
+            preProc = c("center", "scale", "YeoJohnson", "nzv"),
+            method = "rf",
+            trControl = fitControl,
+            verbose = FALSE,
+            tuneLength = 10,
+            metric = "Accuracy",
+            allowParallel = TRUE)
+saveRDS(rf, file = paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/RF_B4.Rds"))
+```
+
+# pcaNNet
+
+```{r}
+set.seed(825)
+pcaNNet <- train(Class ~ ., 
+                 data = TrainingData,
+                 preProc = c("center", "scale", "YeoJohnson", "nzv"),
+                 method = "pcaNNet",
+                 trControl = fitControl,
+                 verbose = FALSE,
+                 metric = "Accuracy",
+                 allowParallel = TRUE)
+saveRDS(pcaNNet, file = paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/NNet_B4.Rds"))
+```
+
+# knn
+
+```{r}
+set.seed(825)
+knn <- train(Class ~ ., 
+             data = TrainingData, 
+             method = "knn", 
+             tuneLength = 6,
+             trControl = fitControl)
+saveRDS(knn, file = paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/KNN_B4.Rds"))
+```
+
+# CART
+
+```{r}
+set.seed(825)
+CART <- train(Class ~ ., 
+              data = TrainingData, 
+              method = "treebag", 
+              trControl = fitControl)
+saveRDS(CART, file = paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/CART_B4.Rds"))
+```
+
+# AdaBoost
+
+```{r}
+set.seed(825)
+AdaBoost <- train(Class ~ ., 
+                  data = TrainingData, 
+                  method = "AdaBoost.M1", 
+                  trControl = fitControl)
+saveRDS(AdaBoost, file = paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/AdaBoost_B4.Rds"))
+```
+
+```{r}
+stopCluster(cl)
+```
+

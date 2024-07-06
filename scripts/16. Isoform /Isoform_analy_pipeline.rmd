@@ -1,0 +1,131 @@
+---
+title: "Untitled"
+author: "junwei"
+date: "2024/4/11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/10basecall_new/")
+library(MASS)
+library(ggplot2)
+library(pbapply)
+library(parallel)
+library(data.table)
+library(Biostrings)
+library(GenomicFeatures)
+library(GenomicAlignments)
+setwd("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/10basecall_new/")
+source("/mnt/raid61/Personal_data/songjunwei/AllScript/00Function/EM_algorithm.R")
+```
+
+#01 Process
+``` {linux}
+fapath="/mnt/raid5/Personal/minion/Visium_DRS/03nanoM6A"
+outpath="/mnt/raid5/Personal/minion/Visium_DRS/04Transcript"
+renamsof="/mnt/raid5/Personal/minion/Visium_DRS/04Transcript/rename_fastx.py"
+extrac="/mnt/raid5/Personal/minion/Visium_DRS/04Transcript/00extrac"
+fqinput="/mnt/raid5/Personal/minion/Visium_DRS/01arrangeData"
+
+#QC   
+for i in DMG_1 DMG_3  GBM_6 GBM2 GBM5； #Finish DMG_2  DMG_4  DMG_5 GBM_1  GBM_3 GBM_4
+do
+    echo $i
+    grep ">" ${i}_result.feature.fa |wc -l
+done
+python $renamsof  $fapath/${sample}_result.feature.fa > $outpath/00renameFa/${sample}.fa
+
+
+for i in   B1_DMG_1_hs  D1_GBM_2_hs  FK_6_1_DMG_3_hs    HW2_GBM_5_hs HW3_GBM_6_hs   ; # HK_13_1_DMG_4_hs  HW4_DMG_5_hs  C1_GBM_1_hs HW1_GBM_4_hs EK_4_1_DMG_2_hs GK_8_2_GBM_3_hs
+do
+sample=`echo $i | awk -F '_'  '{print $(NF-2),$(NF-1)}' OFS='_'`
+echo $sample
+#sub read from raw fq
+seqkit grep  -f $extrac/${sample}_extra_readid.txt $fqinput/${sample}_DRS.fq.gz >  $extrac/${sample}.fq # _DRS.fq.gz
+#align
+minimap2   -ax splice -t 20 \
+     --junc-bed /mnt/raid64/visium/analysis_ONT/ref/refdata_hg38.gtf2bed \
+     /mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/fasta/genome_rename.fa \
+     $extrac/${sample}.fq | samtools sort -@ 20 | samtools view -h   >  $outpath/01Align/${sample}.sam
+samtools sort -@ 20 $outpath/01Align/${sample}.sam | samtools view -hb  >  $outpath/01Align/${sample}.bam
+#TCrun
+python /mnt/raid64/visium/analysis_ONT/personal/songjunwei/software/TranscriptClean-master/TranscriptClean.py \
+  --threads 20 \
+  --sam $outpath/01Align/${sample}.sam \
+  --genome /mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/fasta/genome_rename.fa \
+  --spliceJns /mnt/raid64/visium/analysis_ONT/personal/songjunwei/TranscriptClean/${i}_SpliceJns.txt \
+  --variants /mnt/raid64/visium/analysis_ONT/personal/huangzongyao/bcftools/${sample}.bcftools.vcf \
+  --outprefix $outpath/02TranscriptClean/${sample} \
+  --tmpDir $outpath/02TranscriptClean/
+#re-alignment
+minimap2   -ax splice -t 20 \
+--junc-bed /mnt/raid64/visium/analysis_ONT/ref/refdata_hg38.gtf2bed \
+/mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/fasta/genome_rename.fa \
+$outpath/02TranscriptClean/${sample}_clean.fa | samtools sort -@ 20 | samtools view -hb  > $outpath/03reAlign/${sample}_clean.bam
+done
+
+#run isoform
+outpath="/mnt/raid5/Personal/minion/Visium_DRS/04Transcript"
+cd /mnt/raid5/Personal/minion/Visium_DRS/04Transcript/04FindIsoform
+for i in GBM_6 DMG_1 DMG_2 DMG_3 ; # DMG_4  DMG_5 GBM_1  GBM_4 GBM_3
+do
+Rscript FindIsoform.R \
+  -c 30 \
+  -g /mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/genes/genes.gtf  \
+  -r /mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/fasta/genome_rename.fa \
+  -o $outpath/04FindIsoform/${i}_ \
+  --ignoreStrand TRUE \
+  --MinReads2 5 --MinReads3 5 --MinReads4 5 --MinReads5 5  \
+  $outpath/03reAlign/${i}_clean.bam
+done
+```
+#02  Isoform Identify
+```{r}
+gtfpath="/mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/genes/genes_sorted.gtf.gz"
+# gtfpath="/mnt/raid5/Personal/minion/reference/genes.gtf"
+gtf <- rtracklayer::import(gtfpath)
+gtf_tmp <- gtf[gtf$type == "gene", c("type","gene_id","gene_name")]
+gene_tmp <- gtf[gtf$type == "gene", c("type","gene_id","gene_name")]
+iso_tmp <- gtf[gtf$type == "transcript", c("type","transcript_id","transcript_name","gene_id","gene_name")]
+
+
+iso_path <- list.files(
+  path = "/mnt/raid61/Personal_data/songjunwei/Project/Tumor_DRS/04m6A/rawdata/FindIsoform/", 
+  pattern = "json$", full.names = T, recursive = T)
+library(jsonlite)
+
+iso_list <- lapply(iso_path[c(1:3,9)],function(path){
+  Tmp0 <- read_json(path)
+  Tmp <- data.frame(ReadsID   =  unlist(Tmp0, use.names = F),
+                     transcript = rep(names(Tmp0),sapply(Tmp0, length)))
+  Tmp$transcript <- gsub("\\.[0-9]*$","",Tmp$transcript)
+  #Tmp <- Tmp[!duplicated(Tmp$ReadsID),] ##### !!!!!!!!!!!
+  Tmp <- unique(Tmp)
+  Tmp$sample <- gsub("_Reads2transcript.json","",basename(path))
+  Tmp$transcript_name <- plyr::mapvalues(from = iso_tmp$transcript_id,to = iso_tmp$transcript_name,
+                                         x=Tmp$transcript,warn_missing = T)
+  return(Tmp)
+})
+iso_table <- rbindlist(iso_list)
+colnames(iso_table)=c("ReadsID","transcript","sample","transcript_name")
+
+table(duplicated(iso_table$ReadsID))
+fwrite(iso_table,"06Isoform_count/TCold_isoform_reads_table.txt",sep = "\t",quote = F,col.names = T)
+```
+
+#04 EM calculate
+```{r}
+gtfpath="/mnt/raid64/visium/analysis_ONT/ref/refdata_hg38/genes/genes_sorted.gtf.gz"
+gtf <- rtracklayer::import(gtfpath)
+
+TC_isoTab <- fread("06Isoform_count/TCold_isoform_reads_table.txt")
+table(duplicated(TC_isoTab$ReadsID),TC_isoTab$sample)
+input_data <- TC_isoTab[sample == "DMG_1"]
+
+TC_emTab_list <- lapply(split(TC_isoTab,f = TC_isoTab$sample), function(tmp) {
+  EM_calculate(input_data = tmp,gtf = gtf,minsum = 5,cores = 20)
+})
+saveRDS(TC_emTab_list,"06Isoform_count/TCold_isoform_EMcalcu.rds")
+```
+

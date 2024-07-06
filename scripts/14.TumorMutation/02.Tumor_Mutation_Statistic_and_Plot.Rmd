@@ -1,0 +1,302 @@
+---
+title: "Using classifier to predict"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/03DecodeR_res/align/")
+```
+
+```{r}
+library(vcfR)
+library(data.table)
+```
+
+```{r message=FALSE}
+DMG_1 <- vcfR::read.vcfR("DMG_1_plain.vcf")
+DMG_2 <- vcfR::read.vcfR("DMG_2_plain.vcf")
+DMG_3 <- vcfR::read.vcfR("DMG_3_plain.vcf")
+GBM_6 <- vcfR::read.vcfR("GBM_6_plain.vcf")
+Four <- vcfR::read.vcfR("Tumor_plain.vcf")
+```
+
+```{r eval=FALSE}
+vcfR::getFIX(GBM_6)
+vcfR::extract_gt_tidy(GBM_6)
+vcfR::extract_info_tidy(GBM_6)
+```
+
+```{r}
+DMG_1 <- cbind(as.data.table(vcfR::getFIX(DMG_1)), vcfR::extract_gt_tidy(DMG_1), vcfR::extract_info_tidy(DMG_1))
+DMG_1[, ID := NULL]
+DMG_1[, Key := NULL]
+DMG_1[, Key := NULL]
+DMG_1[, Indiv := "DMG-1"]
+```
+
+```{r}
+DMG_2 <- cbind(as.data.table(vcfR::getFIX(DMG_2)), vcfR::extract_gt_tidy(DMG_2), vcfR::extract_info_tidy(DMG_2))
+DMG_2[, ID := NULL]
+DMG_2[, Key := NULL]
+DMG_2[, Key := NULL]
+DMG_2[, Indiv := "DMG-2"]
+```
+
+```{r}
+DMG_3 <- cbind(as.data.table(vcfR::getFIX(DMG_3)), vcfR::extract_gt_tidy(DMG_3), vcfR::extract_info_tidy(DMG_3))
+DMG_3[, ID := NULL]
+DMG_3[, Key := NULL]
+DMG_3[, Key := NULL]
+DMG_3[, Indiv := "DMG-3"]
+```
+
+```{r}
+GBM_6 <- cbind(as.data.table(vcfR::getFIX(GBM_6)), vcfR::extract_gt_tidy(GBM_6), vcfR::extract_info_tidy(GBM_6))
+GBM_6[, ID := NULL]
+GBM_6[, Key := NULL]
+GBM_6[, Key := NULL]
+GBM_6[, Indiv := "GBM-6"]
+```
+
+```{r}
+DMG_1[DP >= 20, .N, INDEL]
+DMG_2[DP >= 20, .N, INDEL]
+DMG_3[DP >= 20, .N, INDEL]
+GBM_6[DP >= 20, .N, INDEL]
+```
+
+```{r}
+DMG_1[DP >= 100 & INDEL == FALSE, .N, gt_GT]
+DMG_2[DP >= 100 & INDEL == FALSE, .N, gt_GT]
+DMG_3[DP >= 100 & INDEL == FALSE, .N, gt_GT]
+GBM_6[DP >= 100 & INDEL == FALSE, .N, gt_GT]
+```
+
+
+
+```{r}
+Four_Mut <- cbind(as.data.table(vcfR::getFIX(Four)), as.data.table(vcfR::extract_info_tidy(Four)))
+Four_gt <- dcast(as.data.table(vcfR::extract_gt_tidy(Four)), Key ~ Indiv, value.var = "gt_GT")
+colnames(Four_gt) <- gsub(".sorted.bam", ".GT", colnames(Four_gt))
+Four_Mut <- merge(Four_Mut, Four_gt, by = "Key")
+Four_Mut$NoGTs <- apply(Four_Mut[, grepl("GT$", colnames(Four_Mut)), with = F], 1, function(x) length(unique(x[!is.na(x)])))
+Four_Mut[, QUAL := as.numeric(QUAL)]
+```
+
+```{r}
+Four_Mut[INDEL ==FALSE & DP >= 50 & NoGTs > 1, .(CHROM, POS, QUAL, INDEL, DP, MQ, GBM_6.GT, DMG_1.GT, DMG_2.GT, DMG_3.GT)][order(DP)][!grepl("chrM", CHROM)]
+```
+
+```{r}
+Four_Mut[INDEL ==FALSE & DP >= 50 & QUAL > 50 & NoGTs > 1, .(CHROM, POS, QUAL, INDEL, DP, MQ, GBM_6.GT, DMG_1.GT, DMG_2.GT, DMG_3.GT)][order(DP)][!grepl("chrM", CHROM)]
+```
+
+```{r}
+GT_Mat <- na.omit(Four_Mut[INDEL == FALSE & DP >= 100 & QUAL >= 10 & NoGTs > 1, .(CHROM, POS, QUAL, INDEL, DP, MQ, GBM_6.GT, DMG_1.GT, DMG_2.GT, DMG_3.GT)])
+
+GT_Mat <- GT_Mat[, .(GBM_6 = GBM_6.GT, DMG_1 = DMG_1.GT, DMG_2 = DMG_2.GT, DMG_3 = DMG_3.GT)]
+GT_Mat[GT_Mat == "0/0"] <- 0
+GT_Mat[GT_Mat == "0/1"] <- 1
+GT_Mat[GT_Mat == "0/2"] <- 1
+GT_Mat[GT_Mat == "1/1"] <- 2
+GT_Mat[GT_Mat == "1/2"] <- 2
+
+GT_Mat[, GBM_6 := as.numeric(GBM_6)]
+GT_Mat[, DMG_1 := as.numeric(DMG_1)]
+GT_Mat[, DMG_2 := as.numeric(DMG_2)]
+GT_Mat[, DMG_3 := as.numeric(DMG_3)]
+```
+
+```{r}
+library(FactoMineR)
+library(ggplot2)
+library(ggrepel)
+res.pca <- PCA(t(GT_Mat), ncp = 10, graph = F)
+```
+
+```{r fig.width=4, fig.height=4}
+pca_raw_result <- data.frame(res.pca$ind$coord, 
+                             ID = colnames(GT_Mat))
+
+ggplot(pca_raw_result, aes(x = Dim.1, y = Dim.2)) +
+    geom_point(groupOnX = FALSE) +
+    geom_text_repel(aes(label = ID)) + 
+  theme_bw(base_size = 15)
+```
+
+```{r fig.width=4, fig.height=4}
+pheatmap::pheatmap(cor(GT_Mat))
+```
+
+```{r fig.width=4, fig.height=4}
+pheatmap::pheatmap(GT_Mat, show_rownames = F)
+```
+
+
+```{r}
+Mat2 <- na.omit(Four_Mut[INDEL == FALSE & DP >= 100 & QUAL >= 10 & NoGTs > 1, .(CHROM, POS, REF, ALT, QUAL, INDEL, DP, MQ, GBM_6.GT, DMG_1.GT, DMG_2.GT, DMG_3.GT)])
+Mat2[GT_Mat[, GBM_6 == 0 & DMG_1 > 0 & DMG_2 > 0 & DMG_3 > 0], ]
+DMG_Spe <- Mat2[GT_Mat[, GBM_6 == 0 & DMG_1 > 0 & DMG_2 > 0 & DMG_3 > 0], ][!CHROM %in% c("chrM") & grepl("chr", CHROM)]
+```
+
+
+
+
+```{r}
+Mat3 <- na.omit(Four_Mut[INDEL == FALSE & DP >= 100 & QUAL >= 0 & NoGTs > 1, .(CHROM, POS, REF, ALT, QUAL, INDEL, DP, MQ, GBM_6.GT, DMG_1.GT, DMG_2.GT, DMG_3.GT)])
+Mat3[GBM_6.GT != "0/0" & DMG_1.GT == "0/0" & DMG_2.GT == "0/0" & DMG_3.GT == "0/0"]
+GBM_Spe <- Mat3[GBM_6.GT != "0/0" & DMG_1.GT == "0/0" & DMG_2.GT == "0/0" & DMG_3.GT == "0/0"][!CHROM %in% c("chrM") & grepl("chr", CHROM)]
+```
+
+```{r eval=FALSE}
+Candi <- rbind(DMG_Spe, GBM_Spe)
+Candi[, POS := as.numeric(POS)]
+library(GenomicRanges)
+gr <- Candi[, GRanges(seqnames = CHROM, IRanges(POS - 200, POS + 200))]
+library(Biostrings)
+fa <- readDNAStringSet("/mnt/raid61/Personal_data/tangchao/Document/gencode/human/GRCh37/GRCh37.primary_assembly.genome.fa")
+names(fa) <- mapply(function(x) x[1], strsplit(names(fa), " "))
+Candi$seq <- as.character(BSgenome::getSeq(x = fa, gr))
+
+openxlsx::write.xlsx(Candi, "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/14.TumorMutation/Tumor_specific_mutation.xlsx")
+```
+
+
+```{r}
+load(system.file("data/GBMLGG.mutations.20160128.rda", package = "RTCGA.mutations.20160128"))
+setDT(GBMLGG.mutations.20160128)
+
+Muts <- list.files(system.file("data", package = "RTCGA.mutations.20160128"), "mutations.20160128.rda", full.names = TRUE)
+Muts <- lapply(Muts, function(x) {
+  load(x)
+  eval(parse(text = gsub(".rda", "", basename(x))))
+})
+
+Muts <- lapply(Muts, function(x) as.data.table(x))
+Muts <- lapply(Muts, function(x) {
+  colnames(x) <- plyr::mapvalues(colnames(x), "Start_Position", "Start_position")
+  return(x)
+})
+
+colns <- Reduce(intersect, lapply(Muts, colnames))
+
+TCGA_mus <- do.call(rbind, lapply(Muts, function(x) x[, colns, with = FALSE]))
+```
+
+```{r}
+sum(Four_Mut[INDEL == FALSE & DP >= 100 & QUAL >= 10 & NoGTs > 1, paste0(CHROM, "_", POS, "_", REF, "_", ALT)] %in% TCGA_mus[, paste0("chr", Chromosome, "_", Start_position, "_", Reference_Allele, "_", Tumor_Seq_Allele1)])
+sum(Four_Mut[INDEL == FALSE & DP >= 100 & QUAL >= 10 & NoGTs > 1, paste0(CHROM, "_", POS, "_", REF, "_", ALT)] %in% TCGA_mus[, paste0("chr", Chromosome, "_", Start_position, "_", Reference_Allele, "_", Tumor_Seq_Allele2)])
+```
+
+```{r}
+Four_Mut_TCGA <- Four_Mut[INDEL == FALSE & DP >= 100 & QUAL >= 10 & NoGTs > 1 & (paste0(CHROM, "_", POS, "_", REF, "_", ALT) %in% TCGA_mus[, paste0("chr", Chromosome, "_", Start_position, "_", Reference_Allele, "_", Tumor_Seq_Allele1)] | paste0(CHROM, "_", POS, "_", REF, "_", ALT) %in% TCGA_mus[, paste0("chr", Chromosome, "_", Start_position, "_", Reference_Allele, "_", Tumor_Seq_Allele2)])]
+```
+
+
+
+
+
+
+
+
+
+```{r}
+Four_Base <- cbind(as.data.table(vcfR::getFIX(Four)), as.data.table(vcfR::extract_info_tidy(Four)))
+Four_base <- dcast(as.data.table(vcfR::extract_gt_tidy(Four)), Key ~ Indiv, value.var = "gt_GT_alleles")
+colnames(Four_base) <- gsub(".sorted.bam", ".GT", colnames(Four_base))
+Four_base[Four_base == "."] <- NA
+Four_Base <- merge(Four_Base, Four_base, by = "Key")
+Four_Base$NoGTs <- apply(Four_Base[, grepl("GT$", colnames(Four_Base)), with = F], 1, function(x) length(unique(x[!is.na(x)])))
+Four_Base[, QUAL := as.numeric(QUAL)]
+```
+
+```{r}
+library(Biostrings)
+consensusString(DNAStringSet(c("A", "C")))
+Base_Mat <- Four_Base[INDEL == FALSE & DP >= 100 & QUAL >= 50 & NoGTs > 1, ]
+```
+
+```{r}
+Base_Mat <- na.omit(Four_Base[INDEL == FALSE & DP >= 100 & QUAL >= 50 & NoGTs > 1, .(CHROM, POS, QUAL, INDEL, DP, MQ, GBM_6.GT, DMG_1.GT, DMG_2.GT, DMG_3.GT)])
+Base_Mat <- Base_Mat[, .(GBM_6 = GBM_6.GT, DMG_1 = DMG_1.GT, DMG_2 = DMG_2.GT, DMG_3 = DMG_3.GT)]
+Base_Mat$GBM_6 <- mapply(Base_Mat[, GBM_6], FUN = function(x) as.character(consensusString(DNAStringSet(unlist(strsplit(x, "/"))))))
+Base_Mat$DMG_1 <- mapply(Base_Mat[, DMG_1], FUN = function(x) as.character(consensusString(DNAStringSet(unlist(strsplit(x, "/"))))))
+Base_Mat$DMG_2 <- mapply(Base_Mat[, DMG_2], FUN = function(x) as.character(consensusString(DNAStringSet(unlist(strsplit(x, "/"))))))
+Base_Mat$DMG_3 <- mapply(Base_Mat[, DMG_3], FUN = function(x) as.character(consensusString(DNAStringSet(unlist(strsplit(x, "/"))))))
+
+Mut_seqs <- c(DNAStringSet(paste0(Base_Mat[[1]], collapse = "")), 
+              DNAStringSet(paste0(Base_Mat[[2]], collapse = "")), 
+              DNAStringSet(paste0(Base_Mat[[3]], collapse = "")), 
+              DNAStringSet(paste0(Base_Mat[[4]], collapse = "")))
+names(Mut_seqs) <- colnames(Base_Mat)
+```
+
+```{r}
+phy <- ape::nj(cor(GT_Mat))
+phy <- ape::root(phy, "GBM_6")
+plot(phy, main = "Neighbor Joining")
+```
+
+```{r}
+d  <- adist(Mut_seqs)
+hc <- hclust(as.dist(d))
+plot(hc)
+```
+
+```{r}
+d  <- adist(Mut_seqs)
+phy <- ape::nj(as.dist(d))
+phy <- ape::root(phy, "GBM_6")
+plot(phy, main = "Neighbor Joining")
+```
+
+```{r}
+d  <- adist(Mut_seqs)
+hc <- hclust(as.dist(d))
+phy <- ape::nj(as.dist(cor(GT_Mat)))
+phy <- ape::root(phy, "GBM_6")
+plot(phy, main = "Neighbor Joining")
+```
+
+```{r}
+hc <- hclust(dna_dist, method = "complete")
+plot(hc, main = "Neighbor Joining")
+```
+
+```{r}
+library(phangorn)
+library(seqinr)
+mammals_phyDat <- phangorn::phyDat(ape::as.DNAbin(Mut_seqs), type = "DNA")
+# mt <- phangorn::modelTest(mammals_phyDat)
+# print(mt)
+dna_dist <- phangorn::dist.ml(mammals_phyDat, model = "JC69")
+mammals_UPGMA <- upgma(dna_dist)
+plot(mammals_UPGMA, main = "UPGMA")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

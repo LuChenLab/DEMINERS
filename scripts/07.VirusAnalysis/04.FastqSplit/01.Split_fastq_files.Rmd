@@ -1,0 +1,152 @@
+---
+title: "Performance of classifiers"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex", 
+                     base.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(cowplot)
+library(patchwork)
+library(GenomicAlignments)
+```
+
+```{r}
+ROC_Tab_1 <- readRDS("./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20210811.Rds")
+ROC_Tab_2 <- readRDS("./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20210825.Rds")
+ROC_Tab_3 <- readRDS("./analysis/07.VirusClassification/03.Merge/02.Prediction/Prediction_Table_20211008.Rds")
+
+ROC_Tab_1[, read := gsub("read_", "", read)]
+ROC_Tab_2[, read := gsub("read_", "", read)]
+ROC_Tab_3[, read := gsub("read_", "", read)]
+```
+
+# 2021-08-11
+
+```{r}
+ROC_Tab_1[PredSpe == Species, .N, Species]
+```
+
+Alignment
+
+```{r}
+bams <- list.files("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/align/batch1", "bam", full.names = TRUE)
+```
+
+```{r}
+SVV_bam <- GenomicAlignments::readGAlignments(file = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/align/batch1/align_SVV.bam", 
+                                              param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq", "seq")), use.names = TRUE)
+
+SVV_bam <- SVV_bam[names(SVV_bam) %in% ROC_Tab_1[PredSpe == Species & PredSpe == "SVV", read]]
+```
+
+```{r}
+svv_fa <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/ref/SVV.fasta")
+```
+
+```{r}
+SVV_depth <- data.table(POS = seq_len(width(svv_fa)), Depth = as.numeric(coverage(SVV_bam)[[1]]))
+```
+
+```{r}
+library(microseq)
+library(Biostrings)
+fastq <- microseq::readFastq("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch1/guppy/DRS_hac.fastq")
+id <- fastq$Header
+fastq <- QualityScaledDNAStringSet(x = RNAStringSet(fastq$Sequence), 
+                                   quality = PhredQuality(fastq$Quality))
+names(fastq) <- id
+```
+
+```{r}
+SVV_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_1[PredSpe == Species & PredSpe == "SVV", read]]
+writeQualityScaledXStringSet(SVV_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch1/SVV.fastq.gz", compress = TRUE)
+```
+
+
+# 2021-08-25
+
+```{r}
+ROC_Tab_2[PredSpe == Species, .N, Species]
+```
+
+```{r}
+fastq <- microseq::readFastq("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch2_fq/DRS_virus2.fastq")
+id <- fastq$Header
+fastq <- QualityScaledDNAStringSet(x = RNAStringSet(fastq$Sequence), 
+                                   quality = PhredQuality(fastq$Quality))
+names(fastq) <- id
+```
+
+```{r}
+SVV_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_2[PredSpe == Species & PredSpe == "SVV", read]]
+writeQualityScaledXStringSet(SVV_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch2/SVV.fastq.gz", compress = TRUE)
+```
+
+```{r}
+PRRSV_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_2[PredSpe == Species & PredSpe == "PRRSV", read]]
+writeQualityScaledXStringSet(PRRSV_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch2/PRRSV.fastq.gz", compress = TRUE)
+```
+
+```{r}
+Pb_RTA_08_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_2[PredSpe == Species & PredSpe == "PbergheiANKA" & pred == "RTA-08", read]]
+writeQualityScaledXStringSet(Pb_RTA_08_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch2/Pb_RTA_08.fastq.gz", compress = TRUE)
+```
+
+```{r}
+Pb_RTA_27_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_2[PredSpe == Species & PredSpe == "PbergheiANKA" & pred == "RTA-27", read]]
+writeQualityScaledXStringSet(Pb_RTA_27_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch2/Pb_RTA_27.fastq.gz", compress = TRUE)
+```
+
+# 2021-10-08
+
+```{r}
+ROC_Tab_3[PredSpe == Species, .N, Species]
+```
+
+```{r}
+fastq <- microseq::readFastq("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch3_fq/DRS_multi3_6sample.fastq")
+id <- fastq$Header
+fastq <- QualityScaledDNAStringSet(x = RNAStringSet(fastq$Sequence), 
+                                   quality = PhredQuality(fastq$Quality))
+names(fastq) <- id
+```
+
+```{r}
+Pb_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_3[PredSpe == Species & PredSpe == "PbergheiANKA", read]]
+writeQualityScaledXStringSet(Pb_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch3/Pb.fastq.gz", compress = TRUE)
+```
+
+```{r}
+S_enter_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_3[PredSpe == Species & PredSpe == "S_enter", read]]
+writeQualityScaledXStringSet(S_enter_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch3/S_enter.fastq.gz", compress = TRUE)
+```
+
+```{r}
+S_cere_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_3[PredSpe == Species & PredSpe == "S_cere", read]]
+writeQualityScaledXStringSet(S_cere_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch3/S_cere.fastq.gz", compress = TRUE)
+```
+
+```{r}
+Ecoli_fastq <- fastq[mapply(function(x) x[1], strsplit(names(fastq), " ")) %in% ROC_Tab_3[PredSpe == Species & PredSpe == "Ecoli", read]]
+writeQualityScaledXStringSet(Ecoli_fastq, "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/batch3/Ecoli.fastq.gz", compress = TRUE)
+```

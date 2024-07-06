@@ -1,0 +1,286 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r}
+library(data.table)
+library(GenomicFeatures)
+library(GenomicAlignments)
+library(BiocParallel)
+library(ggplot2)
+library(patchwork)
+library(BioHelper)
+```
+
+```{r}
+tro <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/RTA-03.minimap2genome.bam")
+sch <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/RTA-17.minimap2genome.bam")
+```
+
+```{r}
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+names(ref) <- mapply(function(x) x[1], strsplit(names(ref), " \\| "))
+```
+
+```{r}
+txdb <- makeTxDbFromGFF("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+introns0 <- unlist(intronsByTranscript(txdb))
+```
+
+```{r}
+bamFiles <- list.files("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/", "bam$", full.names = TRUE)
+```
+
+```{r}
+params <- Rsamtools::ScanBamParam(flag = Rsamtools::scanBamFlag(isNotPassingQualityControls = FALSE), 
+                                  what = c("mapq", "flag"), 
+                                  mapqFilter = 0)
+mclapply(bamFiles, function(bam) {
+  # if(file.exists(gsub(".bam$", ".SJ.tab", bam))) return(NULL)
+  map0 <- GenomicAlignments::readGAlignments(file = bam, 
+                                             param = params, 
+                                             use.names = FALSE)
+  # map0 <- map0[with(map0, !flag %in% c(2048, 2064))]
+  junc <- junctions(map0)
+  junc <- unlist(junc)
+  junc <- table(junc)
+  junc <- data.table(SJ = names(junc), N = as.integer(junc))
+  junc <- GRanges(as(junc[, SJ], "GRanges"), N = junc[, N])
+  
+  junc$annotation <- as.integer(as.character(junc) %in% as.character(introns0))
+  
+  junc <- DonorSiteSeq(junc, ref, exon = 0, intron = 2)
+  junc <- AcceptorSiteSeq(junc, ref, exon = 0, intron = 2)
+  
+  intron_motif <- with(junc, paste0(DonorMotif, AcceptorMotif))
+  intron_motif[intron_motif == "GTAG"] <- 1
+  intron_motif[intron_motif == "CTAC"] <- 2
+  intron_motif[intron_motif == "GCAG"] <- 3
+  intron_motif[intron_motif == "CTGC"] <- 4
+  intron_motif[intron_motif == "ATAC"] <- 5
+  intron_motif[intron_motif == "GTAT"] <- 6
+  intron_motif[!intron_motif %in% 1:6] <- 0
+  junc$IntronMotif <- as.integer(intron_motif)
+  junc$DonorMotif <- NULL
+  junc$AcceptorMotif <- NULL
+  
+  c1 <- with(junc, annotation == 1)
+  c2 <- with(junc, annotation == 0 & IntronMotif %in% c(1, 3, 5) & N > 1)
+  c3 <- with(junc, annotation == 0 & !IntronMotif %in% c(1, 3, 5) & N > 10)
+  junc$Filter <- as.numeric(c1 | c2 | c3)
+  
+  fwrite(as.data.table(junc), gsub(".bam$", ".SJ.tab", bam), row.names = F, quote = F, sep = "\t")
+}, mc.cores = 8)
+```
+
+```{r}
+SJFiles <- list.files("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/", ".SJ.tab$", full.names = TRUE)
+SJList <- lapply(SJFiles[c(1, 4)], fread)
+SJList2 <- lapply(SJList, function(x) x[Filter == 1])
+SJTab <- data.table(Stage = rep(c("Trophozoite", "Schizont"), mapply(nrow, SJList2)), do.call(rbind, SJList2))
+```
+
+```{r fig.width=3, fig.height=4}
+Mat1 <- SJTab[, .N, by = c("Stage", "annotation")]
+Mat1$P <- round(Mat1[, prop.table(N), by = Stage]$V1 * 100, 2)
+Mat1$L <- paste0(Mat1$N, "\n(", Mat1$P, "%)")
+Mat1[annotation == 0, L := N]
+
+ggplot(Mat1, mapping = aes(x = Stage, fill = factor(annotation), y = N)) + 
+  geom_col() +
+  geom_text(aes(label = L), position = position_stack(vjust = 0.5)) + 
+  theme_bw(base_size = 15) + 
+  guides(fill = guide_legend(title = "annotation")) + 
+  theme(legend.position = "top") + 
+  labs(y = "Number of SJ") -> p1
+p1
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/m6A_AS/No.SJ.pdf", width = 3, height = 4)
+```
+
+
+```{r fig.width=4, fig.height=3}
+SJTab[, SJ := paste0(seqnames, ":", start, "-", end, ":", strand)]
+NovelSJ <- with(SJTab[annotation == 0, ], split(SJ, Stage))
+VennCustom2(input = NovelSJ) + labs(title = "Novel SJ") + theme(title = element_text(size = 16))
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/m6A_AS/Novel.SJ.pdf", width = 4, height = 4)
+```
+
+```{r}
+newsj <- SJTab[annotation == 0 & N > 5, .SD[.N == 1, ], SJ]
+
+newsj2 <- lapply(seq_len(nrow(newsj)), function(i) {
+  r1 <- SJTab[seqnames == newsj[i, seqnames] & (start == newsj[i, start] | end == newsj[i, end]) & Stage != newsj[i, Stage] & annotation == 1]
+  r2 <- SJTab[Stage != newsj[i, Stage] & SJ == newsj[i, SJ]]
+  if(nrow(r1) > 0) {
+    rbind(r1, r2)
+  } else {
+    NULL
+  }
+})
+
+```
+
+```{r}
+case1 <- rbind(SJTab[SJ == newsj2[[43]]$SJ], newsj[43, ])
+case2 <- rbind(SJTab[SJ == newsj2[[80]]$SJ], newsj[80, ])
+```
+
+```{r}
+met <- fread("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch4_f5_fq/barcodediff_res.csv")[, -1]
+met <- met[barcode %in% c("RTA03", "RTA17")]
+```
+
+```{r fig.width=5, fig.height=3}
+metsites <- with(met, split(name, sample))
+names(metsites) <- c("Schizont", "Trophozoite")
+VennCustom2(input = metsites) + labs(title = "m6A") + theme(title = element_text(size = 16))
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/m6A_AS/m6A.pdf", width = 5, height = 4)
+```
+
+```{r fig.width=5, fig.height=4}
+Meth <- fread("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch4_f5_fq/barcodediff_res.csv")[, -1]
+Meth[, ratio := as.numeric(ratio)]
+# hv <- Meth[, sd(ratio, na.rm = T), name][!is.na(V1)][order(V1, decreasing = T)][1:50, name]
+MethTab <- dcast(data = Meth, formula = name + gene ~ barcode, value.var = "ratio")
+# MethTab <- MethTab[name %in% hv]
+MethTab <- data.frame(MethTab[, -c(1:2)], row.names = paste0(MethTab[[1]], "_", MethTab[[2]]))
+hv <- data.table(ID = rownames(MethTab), sd = apply(MethTab, 1, sd, na.rm = T))
+hv <- hv[!is.na(sd)][order(sd, decreasing = T)][, ID]
+length(hv)
+
+MethTab[is.na(MethTab)] <- 0
+library(FactoMineR)
+pca_res <- PCA(t(MethTab[hv, ]), ncp = 3, graph = F)
+library(FactoMineR)
+pca_result <- data.frame(pca_res$svd$U, Name = colnames(MethTab))
+pca_result$name <- gsub("RTA", "RTA-", pca_result$Name)
+pca_result$Stage <- plyr::mapvalues(pca_result$Name, c("RTA03", "RTA10", "RTA16", "RTA17", "RTA24", "RTA32"), 
+                                    c("Trophozoite", "Trophozoite", "Trophozoite", "Schizont", "Schizont", "Schizont"))
+library(ggrepel)
+ggplot(pca_result, aes(x = X1, y = X2, color = Stage))+
+  geom_jitter(size = 2) + #Size and alpha just for fun
+  geom_text_repel(aes(label = name)) + 
+  theme_bw(base_size = 15) +
+  xlab(paste("PC1(", round(pca_res$eig[,2][1]), "%)", sep = "")) +
+  ylab(paste("PC2(", round(pca_res$eig[,2][2]), "%)", sep = "")) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(n = 3, name = "Dark2")[1:2]) + 
+  theme(legend.position = "top")
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/m6A_AS/m6A_PCA.pdf", width = 4.2, height = 4.2)
+```
+
+```{r fig.width=5, fig.height=4}
+Meth <- fread("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch4_f5_fq/barcodediff_res.csv")[, -1]
+Meth[, ratio := as.numeric(ratio)]
+# hv <- Meth[, sd(ratio, na.rm = T), name][!is.na(V1)][order(V1, decreasing = T)][1:50, name]
+MethTab <- dcast(data = Meth, formula = name + gene ~ barcode, value.var = "ratio")
+# MethTab <- MethTab[name %in% hv]
+MethTab <- data.frame(MethTab[, -c(1:2)], row.names = paste0(MethTab[[1]], "_", MethTab[[2]]))
+hv <- data.table(ID = rownames(MethTab), sd = apply(MethTab, 1, sd, na.rm = T))
+hv <- hv[!is.na(sd)][order(sd, decreasing = T)][1:500, ID]
+length(hv)
+MethTab[is.na(MethTab)] <- 0
+library(FactoMineR)
+pca_res <- PCA(t(MethTab[hv, ]), ncp = 3, graph = F)
+library(FactoMineR)
+pca_result <- data.frame(pca_res$svd$U, Name = colnames(MethTab))
+pca_result$name <- gsub("RTA", "RTA-", pca_result$Name)
+pca_result$Stage <- plyr::mapvalues(pca_result$Name, c("RTA03", "RTA10", "RTA16", "RTA17", "RTA24", "RTA32"), 
+                                    c("Trophozoite", "Trophozoite", "Trophozoite", "Schizont", "Schizont", "Schizont"))
+ggplot(pca_result, aes(x = X1, y = X2, color = Stage))+
+  geom_jitter(size = 2) + #Size and alpha just for fun
+  geom_text_repel(aes(label = name)) +
+  theme_bw(base_size = 15) +
+  xlab(paste("PC1(", round(pca_res$eig[,2][1]), "%)", sep = "")) +
+  ylab(paste("PC2(", round(pca_res$eig[,2][2]), "%)", sep = "")) + 
+  scale_color_manual(values = RColorBrewer::brewer.pal(n = 3, name = "Dark2")[1:2]) + 
+  theme(legend.position = "top")
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/m6A_AS/m6A_PCA_top500.pdf", width = 4.2, height = 4.2)
+```
+
+# AS Event
+
+```{r}
+files <- list.files("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/suppa2", "ioe", full.names = T)
+files_03 <- grep("RTA-03", files, value = T)
+files_17 <- grep("RTA-17", files, value = T)
+```
+
+```{r}
+event_03 <- lapply(files_03, fread)
+names(event_03) <- mapply(function(x) x[2], strsplit(basename(files_03), "_"))
+event_03 <- event_03[mapply(nrow, event_03) > 0]
+event_17 <- lapply(files_17, fread)
+names(event_17) <- mapply(function(x) x[2], strsplit(basename(files_17), "_"))
+event_17 <- event_17[mapply(nrow, event_17) > 0]
+```
+
+```{r}
+AS_N <- rbind(data.table(Stage = "Trophozoite", AS = names(event_03), N = mapply(nrow, event_03)), 
+              data.table(Stage = "Schizont", AS = names(event_17), N = mapply(nrow, event_17)))
+AS_N <- AS_N[, .SD[, .(AS, N, P = prop.table(N) * 100)], by = "Stage"]
+AS_N[, L := paste0(N, "\n(", round(P, 1), "%)")]
+```
+
+```{r}
+ggplot(AS_N, aes(x = AS, y = N, fill = Stage)) + 
+  geom_col(position = "dodge") + 
+  geom_text(aes(label = L, y = N + 30), position = position_dodge2(width = 0.9), size = 3) + 
+  # scale_y_log10() + 
+  scale_y_continuous(limits = c(0, 320)) +
+  theme_bw(base_size = 15) + 
+  labs(y = "No. events") + 
+  theme(legend.position = "top") + 
+  scale_fill_manual(values = RColorBrewer::brewer.pal(n = 3, name = "Dark2")[1:2])
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/m6A_AS/AS_Event.pdf", width = 6, height = 4)
+```
+
+
+```{r}
+AS_N <- rbind(data.table(Stage = "Schizont", 
+                         AS = c("A3", "A5", "AF", "RI", "SE"),
+                         N = c(15, 28, 7, 276, 10), 
+                         P = c(4.5, 8.3, 2.1, 82.1, 3)), 
+              data.table(Stage = "Trophozoite", 
+                         AS = c("A3", "A5", "AF", "RI", "SE"),
+                         N = c(10, 11, 3, 201, 9), 
+                         P = c(4.3, 4.7, 1.3, 85.9, 3.8)))
+AS_N[, Stage := factor(Stage, levels = c("Trophozoite", "Schizont"))]
+AS_N[, AS := factor(AS, levels = AS_N[, mean(P), AS][order(V1, decreasing = T), AS])]
+```
+
+```{r}
+ggplot(AS_N, aes(x = AS, y = P, fill = Stage)) + 
+  geom_col(position = "dodge") + 
+  geom_text(aes(label = N, y = P + 2), position = position_dodge2(width = 0.9), size = 3) + 
+  theme_bw(base_size = 15) + 
+  labs(y = "Percentage (%)") + 
+  theme(legend.position = "top") + 
+  scale_fill_manual(values = RColorBrewer::brewer.pal(n = 3, name = "Dark2")[2:1])
+ggsave("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/09.AlternativeSplicing/01.Plasmodium/20211025/AS_Event_V2.pdf", width = 6, height = 4)
+```
+
+
+
+
+
+
+
+

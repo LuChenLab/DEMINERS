@@ -1,0 +1,187 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r}
+library(data.table)
+library(GenomicFeatures)
+library(GenomicAlignments)
+library(BiocParallel)
+library(ggplot2)
+
+```
+
+```{r}
+library(data.table)
+library(GenomicFeatures)
+library(GenomicAlignments)
+library(BiocParallel)
+library(ggplot2)
+
+TxDb <- rtracklayer::readGFFAsGRanges("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/PlasmoDB-53_PbergheiANKA.gff")
+TxDb <- TxDb[mapply(length, with(TxDb, Parent)) == 0]
+table(TxDb$type)
+
+ol <- findOverlaps(TxDb, TxDb)
+ol <- ol[queryHits(ol) != subjectHits(ol)]
+TxDb <- TxDb[-queryHits(ol)]
+names(TxDb) <- TxDb$ID
+
+
+bamFile <- list.files("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean", "bam$", full.names = T)
+bamFile <- grep("RTA", bamFile, value = T)
+
+flag <- scanBamFlag(isSecondaryAlignment = FALSE,
+                    isNotPassingQualityControls = FALSE,
+                    isUnmappedQuery = FALSE,
+                    isDuplicate = FALSE)
+sbp <- ScanBamParam(flag = flag, mapqFilter = 1)
+
+bamLst <- BamFileList(bamFile, yieldSize = 2000000)
+options(srapply_fapply = "parallel", mc.cores = 6)
+se_count1 <- summarizeOverlaps(features = TxDb, 
+                               reads = bamLst, 
+                               mode = "Union",
+                               ignore.strand = FALSE, 
+                               inter.feature = FALSE, 
+                               singleEnd = TRUE,
+                               fragments = FALSE, 
+                               param = sbp, 
+                               preprocess.reads = NULL)
+colnames(se_count1) <- gsub(".minimap2genome.bam", "", colnames(se_count1))
+colSums(assay(se_count1))
+# RTA-03 RTA-10 RTA-16 RTA-17 RTA-24 RTA-32 
+#  39843  10649   4209  48559  75375  50796 
+
+meta <- data.frame(Sample = colnames(se_count1), Stage = rep(c("Trophozoite", "Schizont"), each = 3), row.names = colnames(se_count1))
+
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = assay(se_count1), colData = DataFrame(meta), design = ~ Stage)
+
+hist(log2(1 + rowSums(counts(dds))), breaks = 100, main = "Histogram of log2 gene counts")
+abline(v = log2(1 + 10), col = 2)
+
+sum(rowSums(counts(dds)) > 10)
+length(dds)
+
+dds <- dds[rowSums(counts(dds)) > 10, ]
+
+dds <- estimateSizeFactors(dds)
+dds <- estimateDispersions(dds)
+dds <- nbinomWaldTest(dds)
+
+ntd <- normTransform(dds)
+rld <- rlog(dds, blind = FALSE)
+```
+
+
+```{r}
+library("RColorBrewer")
+library(pheatmap)
+sampleDists <- dist(t(assay(ntd)))
+sampleDistMatrix <- as.matrix(sampleDists)
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix, annotation_row = meta,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors, main = "ntd")
+
+
+sampleDists <- dist(t(assay(rld)))
+sampleDistMatrix <- as.matrix(sampleDists)
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix, annotation_row = meta,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors, main = "rld")
+
+
+plotPCA(ntd, intgroup = c("Stage"))
+plotPCA(rld, intgroup = c("Stage"), ntop = 100)
+
+plotPCA(rld, intgroup = c("Stage"), ntop = length(rld)) + 
+  scale_colour_manual(values = RColorBrewer::brewer.pal(n = 3, "Dark2")[1:2]) + 
+  theme_classic(base_size = 16) + 
+  guides(colour = guide_legend(title = "Stage")) + 
+  theme(legend.position = "top")
+
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/GeneExpression_PCA.pdf", width = 4.2, height = 4.2)
+
+
+dds <- DESeq(dds)
+DEres <- results(dds)
+DEres <- as.data.table(as.data.frame(DEres), keep.rownames = "Gene")
+DEres <- DEres[order(pvalue)]
+```
+
+```{r fig.width=4, fig.height=4}
+Mat <- plotPCA(rld, intgroup = c("Stage"), ntop = length(rld), returnData = T)
+library(ggrepel)
+ggplot(Mat, aes(x = PC1, y = PC2, color = Stage)) + 
+  geom_point() + 
+  geom_text_repel(aes(label = name)) +
+  scale_colour_manual(values = RColorBrewer::brewer.pal(n = 3, "Dark2")[1:2]) + 
+  theme_bw(base_size = 15) + 
+  guides(colour = guide_legend(title = "Stage")) + 
+  theme(legend.position = "top") + 
+  labs(x = "PC1(30%)", y = "PC2(22%)")
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/GeneExpression_PCA.pdf", width = 4.2, height = 4.2)
+```
+
+```{r}
+Meth <- fread("/mnt/raid5/Personal/minion/DRS_mul/batch4/nanom6a/barcodediff_res.csv")
+Meth[, ratio := as.numeric(ratio)]
+MethTab <- dcast(data = Meth, formula = name + gene ~ barcode, value.var = "ratio")
+MethTab <- data.frame(MethTab[, -c(1:2)], row.names = paste0(MethTab[[1]], "_", MethTab[[2]]))
+```
+
+```{r}
+library(FactoMineR)
+pca_res <- PCA(t(MethTab), ncp = 3, graph = F)
+```
+
+```{r}
+library(FactoMineR)
+pca_result <- data.frame(pca_res$svd$U, Name = colnames(MethTab))
+pca_result$Stage <- plyr::mapvalues(pca_result$Name, c("RTA03", "RTA10", "RTA16", "RTA17", "RTA24", "RTA32"), 
+                                    c("Trophozoite", "Trophozoite", "Trophozoite", "Schizont", "Schizont", "Schizont"))
+```
+
+```{r fig.width=8, fig.height=6}
+ggplot(pca_result, aes(x = X1, y = X2, color = Stage))+
+  geom_point(size = 2) + #Size and alpha just for fun
+  # geom_text_repel(aes(label = Organ)) + 
+  theme_bw() +
+  xlab(paste("PC1(", round(pca_res$eig[,2][1], 2), "%)", sep = "")) +
+  ylab(paste("PC2(", round(pca_res$eig[,2][2], 2), "%)", sep = ""))
+```
+
+
+
+
+
+
+
+
+
+

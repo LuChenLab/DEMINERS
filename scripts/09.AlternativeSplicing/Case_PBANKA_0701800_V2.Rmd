@@ -1,0 +1,193 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output:
+  html_document:
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE,
+                      message = FALSE,
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+
+```{r}
+library(GenomicFeatures)
+library(ICAS)
+library(BioHelper)
+library(Biostrings)
+library(ggSashimi)
+library(Biostrings)
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+library(GenomicAlignments)
+tro <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/tro.minimap2genome.bam")
+sch <- readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/sch.minimap2genome.bam")
+
+sjtro <- unlist(junctions(tro))
+sjtro <- data.table(SJ = names(table(as.character(sjtro))), N = as.numeric(table(as.character(sjtro))))
+sjsch <- unlist(junctions(sch))
+sjsch <- data.table(SJ = names(table(as.character(sjsch))), N = as.numeric(table(as.character(sjsch))))
+
+sjtro$start <- with(as(sjtro[, SJ], "GRanges"), paste0(seqnames, ":", start))
+sjtro$end <- with(as(sjtro[, SJ], "GRanges"), paste0(seqnames, ":", end))
+
+sjsch$start <- with(as(sjsch[, SJ], "GRanges"), paste0(seqnames, ":", start))
+sjsch$end <- with(as(sjsch[, SJ], "GRanges"), paste0(seqnames, ":", end))
+
+assjtro <- sjtro[start %in% sjtro[, .N, start][N > 1, start] | end %in% sjtro[, .N, end][N > 1, end]]
+assjsch <- sjsch[start %in% sjsch[, .N, start][N > 1, start] | end %in% sjsch[, .N, end][N > 1, end]]
+
+countTab <- merge(sjtro[, .(SJ, N)], sjsch[, .(SJ, N)], by = "SJ", all = TRUE)
+countTab <- data.frame(countTab[, -1], row.names = countTab[[1]])
+colnames(countTab) <- c("tro", "sch")
+countTab[is.na(countTab)] <- 0
+
+colanno <- data.frame(row.names = colnames(countTab), Cell = c("sch", "tro"))
+
+icas <- ICASDataSetFromMatrix(countData = countTab, colData = colanno, design = "Cell")
+icas <- PSICalculater(icas, MMJF = 0.01, MinSumSpliceSite = 2)
+
+
+icas_psi <- as.data.table(as.data.frame(icas@psi), keep.rownames = "SJ")
+icas_psi <- na.omit(icas_psi)
+
+colnames(countTab) <- paste0(colnames(countTab), "_Count")
+icas_psi <- merge(icas_psi, as.data.table(countTab, keep.rownames = "SJ"), by = "SJ")
+
+icas_psi[, dPSI := abs(sch - tro)]
+icas_psi[order(dPSI)]
+```
+
+```{r}
+TxDb <- GenomicFeatures::makeTxDbFromGFF("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/PlasmoDB-53_PbergheiANKA.gff")
+gtf_rg <- rtracklayer::readGFFAsGRanges("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/PlasmoDB-53_PbergheiANKA.gff")
+```
+
+```{r fig.width=20, fig.height=2}
+library(biovizBase)
+library(ggbio)
+Mat <- icas_psi[dPSI > 0.4]
+Mat <- Mat[order(dPSI, decreasing = T)]
+Mat$Rank <- seq_len(nrow(Mat))
+
+bam_tro <- "/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/tro.minimap2genome.bam"
+bam_sch <- "/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/sch.minimap2genome.bam"
+```
+
+```{r}
+i = 52
+
+sj = Mat[i, SJ]
+target_gr <- gtf_rg[subjectHits(findOverlaps(as(sj, "GRanges"), gtf_rg))]
+
+if(length(target_gr) == 0) {
+  target_gr <- as(sj, "GRanges")
+  start(target_gr) <- start(target_gr) - 1000
+  end(target_gr) <- end(target_gr) + 1000
+}
+
+if(length(findOverlaps(target_gr, gtf_rg)) == 0) {
+  ggSashimi(BamFile = bam_tro,
+            # txdb = TxDb,
+            fill = "#D95F02",
+            query = range(target_gr),
+            ruler = c(start(as(sj, "GRanges")), end(as(sj, "GRanges"))),
+            color = "red",
+            ExtendWidth = 0,
+            minMapQuality = 1,
+            MinSJ = 1) -> s1
+
+  ggSashimi(BamFile = bam_sch,
+            # txdb = TxDb,
+            fill = "#1B9E77",
+            query = range(target_gr),
+            ruler = c(start(as(sj, "GRanges")), end(as(sj, "GRanges"))),
+            color = "red",
+            ExtendWidth = 0,
+            minMapQuality = 1,
+            MinSJ = 1) -> s2
+} else {
+  ggSashimi(BamFile = bam_tro,
+            txdb = TxDb, 
+            fill = "#D95F02",
+            query = range(target_gr),
+            ruler = c(start(as(sj, "GRanges")), end(as(sj, "GRanges"))),
+            color = "red",
+            ExtendWidth = 500,
+            minMapQuality = 1,
+            MinSJ = 1) -> s1
+  ggSashimi(BamFile = bam_sch,
+            txdb = TxDb,
+            fill = "#1B9E77",
+            query = range(target_gr),
+            ruler = c(start(as(sj, "GRanges")), end(as(sj, "GRanges"))),
+            color = "red",
+            ExtendWidth = 500,
+            minMapQuality = 1,
+            MinSJ = 2) -> s2
+}
+```
+
+
+```{r}
+library(biovizBase)
+gr.txdb <- crunch(TxDb, which = range(target_gr))
+grl <- split(gr.txdb, gr.txdb$tx_name)
+p0 <- ggbio::autoplot(grl, aes(type = type))
+p00 <- p0@ggplot + geom_vline(xintercept = c(start(as(sj, "GRanges")), end(as(sj, "GRanges"))), color = "red")
+
+gr <- range(target_gr)
+params <- Rsamtools::ScanBamParam(flag = Rsamtools::scanBamFlag(isNotPassingQualityControls = FALSE),
+                                  what = c("mapq", "flag"),
+                                  which = gr,
+                                  mapqFilter = 1)
+map0 <- GenomicAlignments::readGAlignments(file = bam_tro, param = params, use.names = TRUE)
+map0 <- map0[(start(map0) - start(gr) + width(gr) * 0.5 > 0) & (end(map0) - end(gr) - width(gr) * 0.5 < 0)]
+
+SegM <- cigarRangesAlongReferenceSpace(cigar(map0), ops = "M", with.ops = TRUE, pos = start(map0))
+SegM1 <- GRanges(seqnames = as.character(runValue(seqnames(map0))),
+                 ranges = unlist(SegM),
+                 reads = rep(names(map0), mapply(length, SegM)))
+
+p1 <- ggbio::autoplot(SegM1, geom = "alignment", group.selfish = FALSE, ylab = NULL, legend = FALSE, which = gr, fill = "#D95F02", colour = "#D95F02")
+
+map0 <- GenomicAlignments::readGAlignments(file = bam_sch, param = params, use.names = TRUE)
+map0 <- map0[(start(map0) - start(gr) + width(gr) * 0.5 > 0) & (end(map0) - end(gr) - width(gr) * 0.5 < 0)]
+
+SegM <- cigarRangesAlongReferenceSpace(cigar(map0), ops = "M", with.ops = TRUE, pos = start(map0))
+SegM2 <- GRanges(seqnames = as.character(runValue(seqnames(map0))),
+                 ranges = unlist(SegM),
+                 reads = rep(names(map0), mapply(length, SegM)))
+
+p2 <- ggbio::autoplot(SegM2, geom = "alignment", group.selfish = FALSE, ylab = NULL, legend = FALSE, which = gr, fill = "#1B9E77", colour = "#1B9E77")
+```
+
+```{r}
+relH <- c(length(unique(SegM1$reads)), length(unique(SegM2$reads))) + 1
+
+tracks(tro = p1, sch = p2, p00, heights = c(relH/min(relH), 0.5))
+```
+
+```{r fig.width=9, fig.height=3}
+tracks(Trophozoite = p1, Schizont = p2, p00, heights = c(3, 13, 1),
+       label.text.angle = 0, label.width = unit(5, "lines")) +
+  theme_clear() + theme(axis.line.y = element_blank(), axis.line.x = element_blank())
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/AS_Case_PBANKA_0701800_V2.pdf", width = 9, height = 3)
+```
+
+
+```{r fig.width=9, fig.height=3}
+tracks(Trophozoite = s1@plot$Coverage, Schizont = s2@plot$Coverage, s1@plot$Reference, heights = c(1, 1, 0.2))
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/AS_Case_Sashimi_PBANKA_0701800_V2.pdf", width = 9, height = 3)
+```
+

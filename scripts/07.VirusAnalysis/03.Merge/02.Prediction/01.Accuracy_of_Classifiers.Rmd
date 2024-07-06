@@ -1,0 +1,300 @@
+---
+title: "Using classifier to predict"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+```
+
+# 2021-08-11
+
+## Label prediction
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20210811/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20210811.RData")
+```
+
+```{r}
+ROC_Tab_1 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_1 <- as.data.table(ROC_Tab_1, keep.rownames = "read")
+colnames(ROC_Tab_1) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_1))
+ROC_Tab_1$PP <- apply(ROC_Tab_1[, grepl("RTA", colnames(ROC_Tab_1)), with = F], 1, max)
+```
+
+```{r}
+ggplot(ROC_Tab_1, aes(x = pred, y = PP)) + 
+  geom_violin() + 
+  scale_y_continuous(limits = c(0, 1)) + 
+  theme_classic(base_size = 15)
+```
+
+## Alignment
+
+```{r}
+aligns <- readRDS("./analysis/07.VirusClassification/02.Prediction/20210811/AlignmentResult.Rds")
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, table(Species)]
+aligns[, mean(!Species %in% c("homSap", "MusMus", "pig"))]
+aligns <- aligns[!Species %in% c("homSap", "MusMus", "pig")]
+```
+
+## Merge 
+
+```{r}
+ROC_Tab_1 <- ROC_Tab_1[pred != "RTA-10"]
+```
+
+```{r}
+ROC_Tab_1[, PredSpe := plyr::mapvalues(pred, c("RTA-08", "RTA-33", "RTA-37", "RTA-27"), 
+                                       c("GETV", "SVV", "SARS_Cov_2", "PEDV"))]
+```
+
+```{r}
+ROC_Tab_1 <- merge(ROC_Tab_1, aligns, by.x = "read", by.y = "qname")
+```
+
+
+# 2021-08-25
+
+## Label prediction
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20210825/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20210811.RData")
+```
+
+```{r}
+ROC_Tab_2 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_2 <- as.data.table(ROC_Tab_2, keep.rownames = "read")
+colnames(ROC_Tab_2) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_2))
+ROC_Tab_2$PP <- apply(ROC_Tab_2[, grepl("RTA", colnames(ROC_Tab_2)), with = F], 1, max)
+```
+
+```{r}
+ggplot(ROC_Tab_2, aes(x = pred, y = PP)) + 
+  geom_violin() + 
+  scale_y_continuous(limits = c(0, 1)) + 
+  theme_classic(base_size = 15)
+```
+
+## Alignment
+
+```{r}
+aligns <- readRDS("./analysis/07.VirusClassification/02.Prediction/20210825/AlignmentResult.Rds")
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[!flag %in% c(2048, 2064)]
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, table(Species)]
+aligns[, mean(!Species %in% c("HomSap", "MusMus", "SusScr"))]
+aligns <- aligns[!Species %in% c("HomSap", "MusMus", "SusScr")]
+```
+
+## Merge 
+
+```{r}
+ROC_Tab_2[, PredSpe := plyr::mapvalues(pred, c("RTA-08", "RTA-33", "RTA-37", "RTA-10", "RTA-27"), c("PbergheiANKA", "SVV", "SARS_Cov_2", "PRRSV", "PbergheiANKA"))]
+```
+
+```{r}
+ROC_Tab_2 <- merge(ROC_Tab_2, aligns, by.x = "read", by.y = "qname")
+```
+
+
+# 2021-10-08
+
+## Label prediction
+
+```{r}
+barcodeSigsBinMat <- readRDS("./analysis/07.VirusClassification/01.NormalBarcodeSignal/20211008/barcodeSigsBinMat.Rds")
+load(file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20211008_6.RData")
+```
+
+```{r}
+ROC_Tab_3 <- data.frame(predict(Fit1, barcodeSigsBinMat, type = "prob"), 
+                        pred = predict(Fit1, newdata = barcodeSigsBinMat))
+ROC_Tab_3 <- as.data.table(ROC_Tab_3, keep.rownames = "read")
+colnames(ROC_Tab_3) <- gsub("RTA.", "RTA-", colnames(ROC_Tab_3))
+ROC_Tab_3$PP <- apply(ROC_Tab_3[, grepl("RTA", colnames(ROC_Tab_3)), with = F], 1, max)
+```
+
+```{r}
+ggplot(ROC_Tab_3, aes(x = pred, y = PP)) + 
+  geom_violin() + 
+  scale_y_continuous(limits = c(0, 1)) + 
+  theme_classic(base_size = 15)
+```
+
+## Alignment
+
+```{r}
+library(GenomicAlignments)
+bams <- paste0("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/align/batch3_6sample/", c("SARS_Cov_2", "PRRSV", "S_enter", "S_cere", "PbergheiANKA", "Ecoli"), ".bam")
+
+aligns <- lapply(bams, function(bamFile) {
+  bam <- GenomicAlignments::readGAlignments(file = bamFile, param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq")))
+  data.table(Species = gsub(".bam", "", basename(bamFile)), as.data.frame(mcols(bam)), Length = qwidth(bam))
+})
+aligns <- do.call(rbind, aligns)
+aligns <- na.omit(aligns)
+```
+
+```{r}
+aligns[, qname := paste0("read_", qname)]
+aligns <- aligns[!flag %in% c(2048, 2064)]
+aligns <- unique(aligns[mapq == 60, .(Species, qname)])
+aligns <- aligns[qname %in% aligns[, .N, qname][N == 1, qname]]
+aligns[, table(Species)]
+```
+
+## Merge 
+
+```{r}
+ROC_Tab_3[, PredSpe := plyr::mapvalues(pred, c("RTA-16", "RTA-17", "RTA-10", "RTA-32", "RTA-03", "RTA-24"), 
+                                       c("S_enter", "Ecoli", "PRRSV", "S_cere", "SARS_Cov_2", "PbergheiANKA"))]
+```
+
+```{r}
+ROC_Tab_3 <- merge(ROC_Tab_3, aligns, by.x = "read", by.y = "qname")
+```
+
+# Average of three batches
+
+```{r}
+ROC_Tab <- rbind(ROC_Tab_1[, .(read, PP, PredSpe, Species, Batch = "08-11")], 
+                 ROC_Tab_2[, .(read, PP, PredSpe, Species, Batch = "08-25")], 
+                 ROC_Tab_3[, .(read, PP, PredSpe, Species, Batch = "10-08")])
+ROC_Tab[, PredSpe := as.character(PredSpe)]
+ROC_Tab[, Species := as.character(Species)]
+ROC_Tab <- ROC_Tab[PredSpe != "GETV"]
+# ROC_Tab <- ROC_Tab[!PredSpe %in% c("PEDV", "SARS_Cov_2")]
+# ROC_Tab <- ROC_Tab[!Species %in% c("PEDV", "SARS_Cov_2")]
+ROC_Tab[, PredSpe := factor(PredSpe)]
+ROC_Tab[, Species := factor(Species)]
+```
+
+```{r}
+ROC_Tab[, postResample(pred = PredSpe, obs = Species)]
+#  Accuracy     Kappa 
+# 0.9568350 0.9404457 
+```
+
+```{r}
+ROC_Tab[PP > 0.5, postResample(pred = PredSpe, obs = Species)]
+ # Accuracy     Kappa 
+# 0.9754940 0.9662496 
+ROC_Tab[, mean(PP > 0.5)]
+# [1] 0.9263266
+```
+
+```{r}
+ROC_Tab[, confusionMatrix(data = PredSpe, reference = Species)]
+```
+
+
+```{r}
+Mat <- ROC_Tab[Batch == "08-11"]
+lapply(seq(0, 100, 5)/100, function(i) {
+  ClassifiedReads <- Mat[, sum(PP >= i)]
+  ReadsPercent <- Mat[, mean(PP >= i) * 100]
+  Accu <- Mat[PP >= i, postResample(pred = PredSpe, obs = Species)][1]
+  data.frame(ClassifiedReads = ClassifiedReads, ClassifiedReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- as.data.table(do.call(rbind, Cutoff_Select))
+Cutoff_Select$Cutoff <- seq(0, 100, 5)/100
+
+Cutoff_Select_1 <- copy(Cutoff_Select)
+```
+
+```{r}
+Mat <- ROC_Tab[Batch == "08-25"]
+lapply(seq(0, 100, 5)/100, function(i) {
+  ClassifiedReads <- Mat[, sum(PP >= i)]
+  ReadsPercent <- Mat[, mean(PP >= i) * 100]
+  Accu <- Mat[PP >= i, postResample(pred = PredSpe, obs = Species)][1]
+  data.frame(ClassifiedReads = ClassifiedReads, ClassifiedReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- as.data.table(do.call(rbind, Cutoff_Select))
+Cutoff_Select$Cutoff <- seq(0, 100, 5)/100
+
+Cutoff_Select_2 <- copy(Cutoff_Select)
+```
+
+```{r}
+Mat <- ROC_Tab[Batch == "10-08"]
+lapply(seq(0, 100, 5)/100, function(i) {
+  ClassifiedReads <- Mat[, sum(PP >= i)]
+  ReadsPercent <- Mat[, mean(PP >= i) * 100]
+  Accu <- Mat[PP >= i, postResample(pred = PredSpe, obs = Species)][1]
+  data.frame(ClassifiedReads = ClassifiedReads, ClassifiedReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- as.data.table(do.call(rbind, Cutoff_Select))
+Cutoff_Select$Cutoff <- seq(0, 100, 5)/100
+
+Cutoff_Select_3 <- copy(Cutoff_Select)
+```
+
+```{r}
+Cutoff_Select_s <- rbind(data.table(Cutoff_Select_1, Batch = "08-11"), data.table(Cutoff_Select_2, Batch = "08-25"), data.table(Cutoff_Select_3, Batch = "10-08"))
+```
+
+```{r}
+ggplot(Cutoff_Select_s, aes(ClassifiedReadsPercent, Accuracy, colour = Batch)) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  labs(y = "Accuracy", x = "Percentage of successful reads") + 
+  theme_classic() + 
+  theme(axis.title = element_text(size = 16), 
+        axis.text = element_text(size = 12))
+```
+
+
+```{r}
+Mat <- copy(ROC_Tab)
+lapply(seq(0, 100, 5)/100, function(i) {
+  ClassifiedReads <- Mat[, sum(PP >= i)]
+  ReadsPercent <- Mat[, mean(PP >= i) * 100]
+  Accu <- Mat[PP >= i, postResample(pred = PredSpe, obs = Species)][1]
+  data.frame(ClassifiedReads = ClassifiedReads, ClassifiedReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- as.data.table(do.call(rbind, Cutoff_Select))
+Cutoff_Select$Cutoff <- seq(0, 100, 5)/100
+
+ggplot(Cutoff_Select, aes(ClassifiedReadsPercent, Accuracy)) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  labs(y = "Accuracy", x = "Percentage of successful reads") + 
+  theme_classic() + 
+  theme(legend.position = "none", 
+        axis.title = element_text(size = 16), 
+        axis.text = element_text(size = 12))
+```
+

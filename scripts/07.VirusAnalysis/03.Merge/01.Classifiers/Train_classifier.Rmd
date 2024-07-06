@@ -1,0 +1,234 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+```
+
+# 2021-08-11
+
+```{r}
+load("./analysis/04.RandomForest/01.ClassifierTraining/RData/BIN_100_24barcodes_TrainingData_V2.RData")
+metaInfo <- metaInfo[Barcode %in% c("RTA-08", "RTA-10", "RTA-27", "RTA-33", "RTA-37")]
+TrainingData <- subset.data.frame(TrainingData, Class %in% c("RTA-08", "RTA-10", "RTA-27", "RTA-33", "RTA-37"))
+TrainingData$Class <- droplevels(TrainingData$Class)
+```
+
+```{r}
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10)
+set.seed(825)
+Fit1 <- train(Class ~ ., data = TrainingData,
+              preProc = c("center", "scale", "YeoJohnson", "nzv"),
+              method = "rf",
+              trControl = fitControl,
+              verbose = FALSE,
+              # to evaluate:
+              # tuneGrid = expand.grid(mtry = 2),
+              tuneLength = 1,
+              metric = "Accuracy",
+              allowParallel = TRUE)
+save(Fit1, file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20210811.RData")
+stopCluster(cl)
+```
+
+```{r}
+load("./analysis/04.RandomForest/01.ClassifierTraining/RData/BIN_100_24barcodes_TestData_V2.RData")
+metaInfo <- metaInfo[Barcode %in% c("RTA-08", "RTA-10", "RTA-27", "RTA-33", "RTA-37")]
+TestData <- subset.data.frame(TestData, Class %in% c("RTA-08", "RTA-10", "RTA-27", "RTA-33", "RTA-37"))
+TestData$Class <- droplevels(TestData$Class)
+```
+
+```{r}
+ROC_Tab <- data.frame(predict(Fit1, TestData, type = "prob"), 
+                      pred = predict(Fit1, newdata = TestData))
+ROC_Tab <- merge(metaInfo, as.data.table(ROC_Tab, keep.rownames = "read"), by = "read")
+ROC_Tab$PP <- apply(ROC_Tab[, grepl("RTA", colnames(ROC_Tab)), with = F], 1, max)
+```
+
+```{r}
+ROC_Tab[, mean(Barcode == pred)]
+# [1] 0.9750365
+ROC_Tab[PP > 0.5, mean(Barcode == pred)]
+# [1] 0.994007
+ROC_Tab[, mean(PP > 0.5)]
+# [1] 0.9516013
+```
+
+# 2021-10-08(6)
+
+```{r}
+read2gene <- readRDS("./analysis/07.VirusClassification/03.Merge/00.BarcodeSignal/Reads2Barcode.Rds")
+setkey(read2gene, read)
+read2gene <- read2gene[Barcode %in% c("RTA-03", "RTA-10", "RTA-16", "RTA-17", "RTA-24", "RTA-32")]
+read2gene[, .N, Barcode]
+set.seed(1234)
+TrainingReads <- read2gene[, .SD[sample(.N, 60000, replace = FALSE), ], by = "Barcode"]
+TrainingReads[, table(Barcode)]
+TestReads <- read2gene[!read %in% TrainingReads$read, ]
+sort(TestReads[, table(Barcode)])
+```
+
+```{r}
+SigTab <- readRDS("./analysis/07.VirusClassification/03.Merge/00.BarcodeSignal/BarcodeSignal.Rds")
+```
+
+```{r}
+TrainingData <- SigTab[TrainingReads[, read], ]
+stopifnot(identical(row.names(TrainingData), TrainingReads$read))
+
+TrainingData$Class <- factor(TrainingReads$Barcode)
+print(object.size(TrainingData), units = "Mb")
+```
+
+```{r}
+TestData <- SigTab[TestReads[, read], ]
+stopifnot(identical(row.names(TestData), TestReads$read))
+TestData$Class <- factor(TestReads$Barcode)
+```
+
+```{r}
+save(TrainingReads, TestReads, TrainingData, TestData, file = "./analysis/07.VirusClassification/03.Merge/00.BarcodeSignal/Modeling_data_20211008_6.RData")
+```
+
+```{r}
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10)
+set.seed(825)
+Fit1 <- train(Class ~ ., data = TrainingData,
+              preProc = c("center", "scale", "YeoJohnson", "nzv"),
+              method = "rf",
+              trControl = fitControl,
+              verbose = FALSE,
+              # to evaluate:
+              # tuneGrid = expand.grid(mtry = 2),
+              tuneLength = 1,
+              metric = "Accuracy",
+              allowParallel = TRUE)
+save(Fit1, file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20211008_6.RData")
+stopCluster(cl)
+```
+
+```{r}
+ROC_Tab <- data.frame(predict(Fit1, TestData, type = "prob"), 
+                      pred = predict(Fit1, newdata = TestData))
+ROC_Tab <- merge(TestReads, as.data.table(ROC_Tab, keep.rownames = "read"), by = "read")
+ROC_Tab$PP <- apply(ROC_Tab[, grepl("RTA", colnames(ROC_Tab)), with = F], 1, max)
+```
+
+```{r}
+ROC_Tab[, mean(Barcode == pred)]
+# [1] 0.9665847
+ROC_Tab[PP > 0.5, mean(Barcode == pred)]
+# [1] 0.9902618
+ROC_Tab[, mean(PP > 0.5)]
+# [1] 0.944574
+```
+
+# 2021-10-08(9)
+
+```{r}
+read2gene <- readRDS("./analysis/07.VirusClassification/03.Merge/00.BarcodeSignal/Reads2Barcode.Rds")
+setkey(read2gene, read)
+read2gene <- read2gene[Barcode %in% c("RTA-24", "RTA-12", "RTA-36", "RTA-29", "RTA-26", "RTA-42", "RTA-40", "RTA-35", "RTA-21")]
+read2gene[, .N, Barcode]
+set.seed(1234)
+TrainingReads <- read2gene[, .SD[sample(.N, 60000, replace = FALSE), ], by = "Barcode"]
+TrainingReads[, table(Barcode)]
+TestReads <- read2gene[!read %in% TrainingReads$read, ]
+sort(TestReads[, table(Barcode)])
+```
+
+```{r}
+SigTab <- readRDS("./analysis/07.VirusClassification/03.Merge/00.BarcodeSignal/BarcodeSignal.Rds")
+```
+
+```{r}
+TrainingData <- SigTab[TrainingReads[, read], ]
+stopifnot(identical(row.names(TrainingData), TrainingReads$read))
+
+TrainingData$Class <- factor(TrainingReads$Barcode)
+print(object.size(TrainingData), units = "Mb")
+```
+
+```{r}
+TestData <- SigTab[TestReads[, read], ]
+stopifnot(identical(row.names(TestData), TestReads$read))
+TestData$Class <- factor(TestReads$Barcode)
+```
+
+```{r}
+save(TrainingReads, TestReads, TrainingData, TestData, file = "./analysis/07.VirusClassification/03.Merge/00.BarcodeSignal/Modeling_data_20211008_9.RData")
+```
+
+
+```{r}
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10)
+set.seed(825)
+Fit1 <- train(Class ~ ., data = TrainingData,
+              preProc = c("center", "scale", "YeoJohnson", "nzv"),
+              method = "rf",
+              trControl = fitControl,
+              verbose = FALSE,
+              # to evaluate:
+              # tuneGrid = expand.grid(mtry = 2),
+              tuneLength = 1,
+              metric = "Accuracy",
+              allowParallel = TRUE)
+save(Fit1, file = "./analysis/07.VirusClassification/03.Merge/01.Classifiers/20211008_9.RData")
+stopCluster(cl)
+```
+
+```{r}
+ROC_Tab <- data.frame(predict(Fit1, TestData, type = "prob"), 
+                      pred = predict(Fit1, newdata = TestData))
+ROC_Tab <- merge(TestReads, as.data.table(ROC_Tab, keep.rownames = "read"), by = "read")
+ROC_Tab$PP <- apply(ROC_Tab[, grepl("RTA", colnames(ROC_Tab)), with = F], 1, max)
+```
+
+```{r}
+ROC_Tab[, mean(Barcode == pred)]
+# [1] 0.9479902
+ROC_Tab[PP > 0.5, mean(Barcode == pred)]
+# [1] 0.9902883
+ROC_Tab[, mean(PP > 0.5)]
+# [1] 0.8728414
+```
+

@@ -1,0 +1,205 @@
+---
+title: "Using classifier to predict"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+knitr::opts_knit$set(base.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+library(patchwork)
+library(multiROC)
+library(pROC)
+library(cowplot)
+library(dummies)
+library(ggpubr)
+```
+
+```{r}
+PredList <- mclapply(gsub("_B4.Rds", "", list.files("./analysis/12.AlgorithmComparison/Version1/01.Models")), function(b) {
+  load("./analysis/11.Classifiers/01.ModelingData/Barcode_4.RData")
+  Fit <- readRDS(paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/", b, "_B4.Rds"))
+  ROC_Tab <- data.table(read = row.names(TestData), pred = predict(Fit, newdata = TestData))
+  ROC_Tab <- merge(TestReads, ROC_Tab, by = "read")
+  return(ROC_Tab)
+}, mc.cores = 6)
+names(PredList) <- gsub("_B4.Rds", "", list.files("./analysis/12.AlgorithmComparison/Version1/01.Models"))
+saveRDS(PredList, file = "./analysis/12.AlgorithmComparison/Version1/02.Compare/PredList.Rds")
+```
+
+```{r}
+Performs <- lapply(PredList, function(x) {
+  lapply(1:10, FUN = function(i) {
+    set.seed(i)
+    sub <- x[, .SD[sample(.N, 10000), ], Class]
+    cM <- sub[, confusionMatrix(pred, Class)]
+    data.table(Accuracy = cM$overall[1], 
+               Sensitivity = apply(cM$byClass, 2, mean)[1], 
+               Specificity = apply(cM$byClass, 2, mean)[2], 
+               Precision = apply(cM$byClass, 2, mean)[5], 
+               Recall = apply(cM$byClass, 2, mean)[6], 
+               F1 = apply(cM$byClass, 2, mean)[7])
+  }) -> Performs
+  do.call(rbind, Performs)
+})
+Performs <- data.table(Model = rep(names(PredList), mapply(nrow, Performs)), do.call(rbind, Performs))
+```
+
+
+```{r}
+my_compa <- list(c("AdaBoost", "RF"))
+```
+
+# Accuracy
+
+```{r}
+MoldeCols <- ggsci::pal_igv()(6)
+names(MoldeCols) <- c("RF", "NB", "NNet", "KNN", "CART", "AdaBoost")
+```
+
+
+```{r fig.height=4, fig.width=4}
+od <- Performs[, mean(Accuracy), Model][order(V1), Model]
+Performs[, Model := factor(Model, levels = od)]
+ggplot(Performs, aes(x = Model, y = Accuracy, colour = Model)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  scale_colour_manual(values = MoldeCols) +
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+ggsave("./analysis/12.AlgorithmComparison/Version1/02.Compare/Accuracy.pdf", width = 3.5, height = 3.5)
+```
+
+# Sensitivity
+
+```{r fig.height=4, fig.width=4}
+od <- Performs[, mean(Sensitivity), Model][order(V1), Model]
+Performs[, Model := factor(Model, levels = od)]
+ggplot(Performs, aes(x = Model, y = Sensitivity, colour = Model)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  scale_colour_manual(values = MoldeCols) +
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+ggsave("./analysis/12.AlgorithmComparison/Version1/02.Compare/Sensitivity.pdf", width = 3.5, height = 3.5)
+```
+
+# Specificity
+
+```{r fig.height=4, fig.width=4}
+od <- Performs[, mean(Specificity), Model][order(V1), Model]
+Performs[, Model := factor(Model, levels = od)]
+ggplot(Performs, aes(x = Model, y = Specificity, colour = Model)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  scale_colour_manual(values = MoldeCols) +
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+ggsave("./analysis/12.AlgorithmComparison/Version1/02.Compare/Specificity.pdf", width = 3.5, height = 3.5)
+```
+
+# Precision
+
+```{r fig.height=4, fig.width=4}
+od <- Performs[, mean(Precision), Model][order(V1), Model]
+Performs[, Model := factor(Model, levels = od)]
+ggplot(Performs, aes(x = Model, y = Precision, colour = Model)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  scale_colour_manual(values = MoldeCols) +
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+ggsave("./analysis/12.AlgorithmComparison/Version1/02.Compare/Precision.pdf", width = 3.5, height = 3.5)
+```
+
+# Recall
+
+```{r fig.height=4, fig.width=4}
+od <- Performs[, mean(Recall), Model][order(V1), Model]
+Performs[, Model := factor(Model, levels = od)]
+ggplot(Performs, aes(x = Model, y = Recall, colour = Model)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  scale_colour_manual(values = MoldeCols) +
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+ggsave("./analysis/12.AlgorithmComparison/Version1/02.Compare/Recall.pdf", width = 3.5, height = 3.5)
+```
+
+# F1
+
+```{r fig.height=4, fig.width=4}
+od <- Performs[, mean(F1), Model][order(V1), Model]
+Performs[, Model := factor(Model, levels = od)]
+ggplot(Performs, aes(x = Model, y = F1, colour = Model)) + 
+  geom_boxplot() + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(height = 0) +
+  theme_bw(base_size = 15) + 
+  scale_colour_manual(values = MoldeCols) +
+  stat_compare_means(label = "p.signif", comparisons = my_compa, method = "t.test", tip.length = 0, vjust = 0.4) + 
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none") + 
+  labs(y = "F1 score")
+ggsave("./analysis/12.AlgorithmComparison/Version1/02.Compare/F1.pdf", width = 3.5, height = 3.5)
+```
+
+# AUC
+
+```{r}
+load("./analysis/11.Classifiers/01.ModelingData/Barcode_4.RData")
+set.seed(123)
+TestReads <- TestReads[, .SD[sample(.N, 10000), ], Barcode]
+TestData <- TestData[TestReads$read, ]
+```
+
+```{r warning=FALSE, message=FALSE}
+true_label1 <- dummies::dummy(TestReads$Class, sep = " ")
+true_label1 <- data.frame(true_label1)
+colnames(true_label1) <- gsub("Class.", "", colnames(true_label1))
+colnames(true_label1) <- gsub("RTA.", "RTA-", colnames(true_label1))
+colnames(true_label1) <- paste0(colnames(true_label1), "_true")
+row.names(true_label1) <- TestReads$read
+```
+
+```{r}
+PredList2 <- mclapply(gsub("_B4.Rds", "", list.files("./analysis/12.AlgorithmComparison/Version1/01.Models")), function(b) {
+  load("./analysis/11.Classifiers/01.ModelingData/Barcode_4.RData")
+  Fit <- readRDS(paste0("./analysis/12.AlgorithmComparison/Version1/01.Models/", b, "_B4.Rds"))
+  res <- predict(Fit, newdata = TestData, type = "prob")
+  row.names(res) <- row.names(TestData)
+  return(res)
+}, mc.cores = 6)
+names(PredList2) <- gsub("_B4.Rds", "", list.files("./analysis/12.AlgorithmComparison/Version1/01.Models"))
+```
+

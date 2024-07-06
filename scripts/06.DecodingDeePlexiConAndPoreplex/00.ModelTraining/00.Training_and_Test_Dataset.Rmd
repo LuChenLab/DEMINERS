@@ -1,0 +1,301 @@
+---
+title: "Training and Test dataset of DeePlexiCon and Poreplex"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval      = T, #在块中运行代码(default = TRUE)
+                      highlight = T, #高亮显示
+                      echo      = F, #是否在输出中包含源代码
+                      tidy      = T, #是否整理代码
+                      error     = T, #是否在输出中包含错误信息
+                      warning   = F, #是否在输出中包含警告(default = TRUE)
+                      message   = F, #是否在输出中包含参考的信息
+                      cache.    = F)
+knitr::opts_knit$set(root.dir = "/mnt/raid61/Personal_data/tangchao/40TCellsQTL4")
+```
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(ggpubr)
+library(parallel)
+library(ggridges)
+```
+
+# Reads of Poreplex & DeePlexiCon barcodes
+
+```{r}
+read2gene_20200605 <- fread("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/02.BamReadsSplit/read2gene_20200605.txt")
+read2gene_20200620 <- fread("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/02.BamReadsSplit/read2gene_20200620.txt")
+read2gene_20200902 <- fread("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/02.BamReadsSplit/read2gene_20200902.txt")
+read2gene_20201127 <- fread("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/02.BamReadsSplit/read2gene_20201127.txt")
+```
+
+```{r}
+read2gene_20200605[, read := paste0("read_", read)]
+read2gene_20200620[, read := paste0("read_", read)]
+read2gene_20200902[, read := paste0("read_", read)]
+read2gene_20201127[, read := paste0("read_", read)]
+```
+
+```{r}
+read2gene_20200902 <- read2gene_20200902[grepl("^[DP]-", Name), ]
+read2gene_20201127 <- read2gene_20201127[grepl("^[DP]-", Name), ]
+```
+
+# Signal of Poreplex & DeePlexiCon barcodes
+
+DeePlexiCon of 20200605
+```{r}
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/02.BarcodeSignalBinExp/20200605/"
+files <- list.files(path = dir_bs, pattern = ".signal", full.names = TRUE)
+
+Sigs0605 <- mclapply(FUN = function(x) {
+  load(x)
+  barcode
+}, files, mc.cores = 4)
+Sigs0605 <- do.call("c", Sigs0605)
+```
+
+Poreplex of 20200620
+```{r}
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/02.BarcodeSignalBinExp/20200620/"
+files <- list.files(path = dir_bs, pattern = ".signal", full.names = TRUE)
+
+Sigs0620 <- mclapply(FUN = function(x) {
+  load(x)
+  barcode
+}, files, mc.cores = 4)
+Sigs0620 <- do.call("c", Sigs0620)
+```
+
+DeePlexiCon & Poreplex of 20200902
+```{r}
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/02.BarcodeSignalBinExp/20200902/"
+files <- list.files(path = dir_bs, pattern = ".signal", full.names = TRUE)
+
+Sigs0902 <- mclapply(FUN = function(x) {
+  load(x)
+  barcode
+}, files, mc.cores = 4)
+Sigs0902 <- do.call("c", Sigs0902)
+```
+
+```{r}
+Sigs0902 <- Sigs0902[names(Sigs0902) %in% read2gene_20200902$read]
+```
+
+DeePlexiCon & Poreplex of 20201127
+```{r}
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/02.BarcodeSignalBinExp/20201127/"
+files <- list.files(path = dir_bs, pattern = ".signal", full.names = TRUE)
+
+Sigs1127 <- mclapply(FUN = function(x) {
+  load(x)
+  barcode
+}, files, mc.cores = 4)
+Sigs1127 <- do.call("c", Sigs1127)
+```
+
+```{r}
+Sigs1127 <- Sigs1127[names(Sigs1127) %in% read2gene_20201127$read]
+```
+
+# Training set of DeePlexiCon & Poreplex
+
+For DeePlexiCon software, we used 20200902 and 20201127 sequenced reads as training dataset to predict 20200605 sequenced reads.    
+
+```{r}
+DeePlexiCon_TrainingSet <- rbind(read2gene_20200902[grepl("^D-", Name), ], read2gene_20201127[grepl("^D-", Name), ])
+```
+
+```{r}
+DeePlexiCon_TrainingSet_Signal <- c(Sigs0902[names(Sigs0902) %in% DeePlexiCon_TrainingSet$read], Sigs1127[names(Sigs1127) %in% DeePlexiCon_TrainingSet$read])
+DeePlexiCon_TrainingSet <- DeePlexiCon_TrainingSet[read %in% names(DeePlexiCon_TrainingSet_Signal), ]
+```
+
+```{r}
+DeePlexiCon_TrainingSet_Signal <- do.call(rbind, DeePlexiCon_TrainingSet_Signal)
+colnames(DeePlexiCon_TrainingSet_Signal) <- paste0("BIN", sprintf("%03d", seq_len(ncol(DeePlexiCon_TrainingSet_Signal))))
+```
+
+
+For Poreplex software, we used 20200902 and 20201127 sequenced reads as training dataset to predict 20200620 sequenced reads.
+
+```{r}
+Poreplex_TrainingSet <- rbind(read2gene_20200902[grepl("^P-", Name), ], read2gene_20201127[grepl("^P-", Name), ])
+```
+
+```{r}
+Poreplex_TrainingSet_Signal <- c(Sigs0902[names(Sigs0902) %in% Poreplex_TrainingSet$read], Sigs1127[names(Sigs1127) %in% Poreplex_TrainingSet$read])
+Poreplex_TrainingSet <- Poreplex_TrainingSet[read %in% names(Poreplex_TrainingSet_Signal), ]
+```
+
+```{r}
+Poreplex_TrainingSet_Signal <- do.call(rbind, Poreplex_TrainingSet_Signal)
+colnames(Poreplex_TrainingSet_Signal) <- paste0("BIN", sprintf("%03d", seq_len(ncol(Poreplex_TrainingSet_Signal))))
+```
+
+
+# Test set of DeePlexiCon & Poreplex
+
+```{r}
+DeePlexiCon_TestSet <- read2gene_20200605
+```
+
+```{r}
+DeePlexiCon_TestSet_Signal <- Sigs0605[names(Sigs0605) %in% DeePlexiCon_TestSet$read]
+DeePlexiCon_TestSet <- DeePlexiCon_TestSet[read %in% names(DeePlexiCon_TestSet_Signal), ]
+```
+
+```{r}
+DeePlexiCon_TestSet_Signal <- do.call(rbind, DeePlexiCon_TestSet_Signal)
+colnames(DeePlexiCon_TestSet_Signal) <- paste0("BIN", sprintf("%03d", seq_len(ncol(DeePlexiCon_TestSet_Signal))))
+```
+
+
+```{r}
+Poreplex_TestSet <- read2gene_20200620
+```
+
+```{r}
+Poreplex_TestSet_Signal <- Sigs0620[names(Sigs0620) %in% Poreplex_TestSet$read]
+Poreplex_TestSet <- Poreplex_TestSet[read %in% names(Poreplex_TestSet_Signal), ]
+```
+
+```{r}
+Poreplex_TestSet_Signal <- do.call(rbind, Poreplex_TestSet_Signal)
+colnames(Poreplex_TestSet_Signal) <- paste0("BIN", sprintf("%03d", seq_len(ncol(Poreplex_TestSet_Signal))))
+```
+
+# Save RData
+
+DeePlexiCon_TrainingSet
+```{r}
+dim(DeePlexiCon_TrainingSet_Signal)
+dim(DeePlexiCon_TrainingSet)
+```
+
+```{r}
+setkey(DeePlexiCon_TrainingSet, read)
+DeePlexiCon_TrainingSet[, Name := factor(Name)]
+DeePlexiCon_TrainingSet_Signal <- DeePlexiCon_TrainingSet_Signal[DeePlexiCon_TrainingSet$read, ]
+stopifnot(identical(row.names(DeePlexiCon_TrainingSet_Signal), DeePlexiCon_TrainingSet$read))
+DeePlexiCon_TrainingSet_Signal <- as.data.frame(DeePlexiCon_TrainingSet_Signal)
+```
+
+```{r}
+DeePlexiCon_TrainingSet_Signal$Class <- DeePlexiCon_TrainingSet$Name
+```
+
+```{r}
+saveRDS(DeePlexiCon_TrainingSet_Signal, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/DeePlexiCon_TrainingSet.Rds")
+```
+
+```{r}
+saveRDS(DeePlexiCon_TrainingSet, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/DeePlexiCon_TrainingSet_Meta.Rds")
+```
+
+
+
+DeePlexiCon_TestSet
+```{r}
+dim(DeePlexiCon_TestSet_Signal)
+dim(DeePlexiCon_TestSet)
+```
+
+```{r}
+setkey(DeePlexiCon_TestSet, read)
+DeePlexiCon_TestSet[, Name := factor(Name)]
+DeePlexiCon_TestSet_Signal <- DeePlexiCon_TestSet_Signal[DeePlexiCon_TestSet$read, ]
+stopifnot(identical(row.names(DeePlexiCon_TestSet_Signal), DeePlexiCon_TestSet$read))
+DeePlexiCon_TestSet_Signal <- as.data.frame(DeePlexiCon_TestSet_Signal)
+```
+
+```{r}
+DeePlexiCon_TestSet_Signal$Class <- DeePlexiCon_TestSet$Name
+```
+
+```{r}
+saveRDS(DeePlexiCon_TestSet_Signal, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/DeePlexiCon_TestSet.Rds")
+```
+
+```{r}
+saveRDS(DeePlexiCon_TestSet, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/DeePlexiCon_TestSet_Meta.Rds")
+```
+
+
+
+
+Poreplex_TrainingSet
+```{r}
+dim(Poreplex_TrainingSet_Signal)
+dim(Poreplex_TrainingSet)
+```
+
+```{r}
+setkey(Poreplex_TrainingSet, read)
+Poreplex_TrainingSet[, Name := factor(Name)]
+Poreplex_TrainingSet_Signal <- Poreplex_TrainingSet_Signal[Poreplex_TrainingSet$read, ]
+stopifnot(identical(row.names(Poreplex_TrainingSet_Signal), Poreplex_TrainingSet$read))
+Poreplex_TrainingSet_Signal <- as.data.frame(Poreplex_TrainingSet_Signal)
+```
+
+```{r}
+Poreplex_TrainingSet_Signal$Class <- Poreplex_TrainingSet$Name
+```
+
+```{r}
+saveRDS(Poreplex_TrainingSet_Signal, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/Poreplex_TrainingSet.Rds")
+```
+
+```{r}
+saveRDS(Poreplex_TrainingSet, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/Poreplex_TrainingSet_Meta.Rds")
+```
+
+
+
+Poreplex_TestSet
+```{r}
+dim(Poreplex_TestSet_Signal)
+dim(Poreplex_TestSet)
+```
+
+```{r}
+setkey(Poreplex_TestSet, read)
+Poreplex_TestSet[, Name := factor(Name)]
+Poreplex_TestSet_Signal <- Poreplex_TestSet_Signal[Poreplex_TestSet$read, ]
+stopifnot(identical(row.names(Poreplex_TestSet_Signal), Poreplex_TestSet$read))
+Poreplex_TestSet_Signal <- as.data.frame(Poreplex_TestSet_Signal)
+```
+
+```{r}
+Poreplex_TestSet_Signal$Class <- Poreplex_TestSet$Name
+```
+
+```{r}
+saveRDS(Poreplex_TestSet_Signal, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/Poreplex_TestSet.Rds")
+```
+
+```{r}
+saveRDS(Poreplex_TestSet, 
+        file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/Poreplex_TestSet_Meta.Rds")
+```
+

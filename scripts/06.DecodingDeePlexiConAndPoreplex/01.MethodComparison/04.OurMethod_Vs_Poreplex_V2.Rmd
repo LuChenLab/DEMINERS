@@ -1,0 +1,221 @@
+---
+title: "Performance of Poreplex barcodes classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = 'center')
+```
+
+```{r}
+library(data.table)
+library(caret)
+library(RColorBrewer)
+library(pheatmap)
+library(GenomicAlignments)
+```
+
+# Accuracy validation
+
+```{r}
+load(file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining2/01.Model/Poreplex_Classifier.RData")
+TestData <- readRDS("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining2/00.RData/Poreplex_TestSet.Rds")
+```
+
+```{r}
+Fit1
+```
+
+```{r}
+ROC_Tab <- data.frame(obs = TestData$Class, 
+                      predict(Fit1, TestData, type = "prob"), 
+                      pred = predict(Fit1, newdata = TestData))
+```
+
+```{r}
+postResample(pred = ROC_Tab$pred, obs = ROC_Tab$obs)
+```
+
+```{r}
+(confM <- confusionMatrix(data = ROC_Tab$pred, reference = ROC_Tab$obs))
+```
+
+```{r}
+confP <- apply(confM$table, 2, function(x) x/sum(x))
+```
+
+```{r fig.width=4, fig.height=4}
+pheatmap(confP * 100, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         display_numbers = T, 
+         fontsize = 15, 
+         number_color = "red", 
+         legend = FALSE, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+```
+
+```{r fig.width=4, fig.height=4}
+pdf("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/01.Comparison/Our_Poreplex_confusionMatrix.pdf", width = 4, height = 4)
+pheatmap(confP * 100, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         display_numbers = T, 
+         fontsize = 15, 
+         number_color = "red", 
+         legend = FALSE, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+dev.off()
+```
+
+```{r}
+lapply(seq(1, 99, 1)/100, function(i) {
+  ReadsPercent <- mean(apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) >= i)*100
+  ROC_Tab_PPT <- ROC_Tab[apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) > i, ]
+  Accu <- postResample(pred = ROC_Tab_PPT$pred, obs = ROC_Tab_PPT$obs)[1]
+  data.frame(ReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- do.call(rbind, Cutoff_Select)
+Cutoff_Select$Cutoff <- seq(1, 99, 1)/100
+```
+
+```{r}
+library(ggplot2)
+ggplot(Cutoff_Select, aes(ReadsPercent, Accuracy)) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  labs(y = "Accuracy", x = "Percentage of classified reads") + 
+  theme_classic(base_size = 15) + 
+  theme(legend.position = "none", 
+        axis.title = element_text(size = 16), 
+        axis.text = element_text(size = 12)) + 
+  geom_hline(yintercept = 0.99)
+```
+
+```{r}
+table(Fit1$trainingData$.outcome)
+```
+
+# Poreplex
+
+```{r}
+bams <- list.files("/mnt/raid62/BetaCoV/Person/tangchao/analysis/DrictRNA/Poreplex/guppy_basecaller/output", "sorted.bam", full.names = TRUE)
+
+lapply(bams, function(x) {
+  bam <- readGAlignments(x, param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq")), use.names = T)
+  bam <- bam[with(bam, mapq == 60 & flag == 0)]
+  data.table(ReadID = names(bam), Gene = as.character(seqnames(bam)), pred = gsub(".sorted.bam", "", basename(x)))
+}) -> poreplex_output
+poreplex_output <- do.call(rbind, poreplex_output)
+poreplex_output[, ReadID := paste0("read_", ReadID)]
+```
+
+```{r}
+R2BC <- readRDS("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/00.ModelTraining/00.RData/Poreplex_TestSet_Meta.Rds")
+```
+
+```{r}
+poreplex_output <- merge(poreplex_output, R2BC[, .(read, Name, gene)], by.x = "ReadID", by.y = "read")
+```
+
+```{r}
+setnames(poreplex_output, "Name", "obs")
+poreplex_output[, pred := plyr::mapvalues(x = pred, from = c("BC1", "BC2", "BC3", "BC4"), to = c("P-BC1", "P-BC2", "P-BC3", "P-BC4"))]
+```
+
+```{r}
+table(poreplex_output$pred)
+```
+
+```{r}
+mean(poreplex_output$pred != "undetermined")
+```
+
+```{r}
+poreplex_output[, pred := factor(pred, levels = c("P-BC1", "P-BC2", "P-BC3", "P-BC4", "undetermined"))]
+poreplex_output[, obs := factor(obs, levels = c("P-BC1", "P-BC2", "P-BC3", "P-BC4", "undetermined"))]
+```
+
+```{r}
+postResample(pred = poreplex_output$pred, obs = poreplex_output$obs)
+mean(poreplex_output$pred == poreplex_output$obs)
+```
+
+```{r}
+mean(poreplex_output[pred != "undetermined", ]$pred == poreplex_output[pred != "undetermined", ]$obs)
+```
+
+```{r}
+(confM2 <- confusionMatrix(data = poreplex_output$pred, reference = poreplex_output$obs))
+```
+
+
+```{r}
+confP2 <- apply(confM2$table, 2, function(x) x/sum(x))
+```
+
+```{r fig.width=4.2, fig.height=4}
+pheatmap(confP2[, 1:4]*100, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         display_numbers = T, 
+         fontsize = 15, 
+         number_color = "red", 
+         legend = FALSE, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+```
+
+```{r fig.width=4, fig.height=4}
+pdf("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/01.Comparison/Poreplex_confusionMatrix.pdf", width = 4.2, height = 4)
+pheatmap(confP2[, 1:4]*100, 
+         cluster_rows = F, 
+         cluster_cols = F, 
+         display_numbers = T, 
+         fontsize = 15, 
+         number_color = "red", 
+         legend = FALSE, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+dev.off()
+```
+
+```{r}
+setwd("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/01.Comparison")
+saveRDS(confM, "Our_Method_confusionMatrix_Vs_Poreplex.Rds")
+saveRDS(confM2, "Poreplex_confusionMatrix.Rds")
+saveRDS(Cutoff_Select, "Poreplex_CutOff_List.Rds")
+```
+
+
+
+```{r}
+Poreplex <- readRDS("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/01.Comparison/Poreplex_CutOff_List.Rds")
+Poreplex <- data.table(Method = "Poreplex", Poreplex)
+DeePlexiCon <- readRDS("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/01.Comparison/DeePlexiCon_CutOff_List.Rds")
+
+Mat <- rbind(DeePlexiCon, Poreplex)[Method != "DeePlexiCon"]
+Mat[Method == "My", Method := "DeePlexiCon"]
+```
+
+```{r}
+ggplot(Mat, aes(ReadsPercent, Accuracy * 100, colour = Method)) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  labs(y = "Accuracy", x = "Percentage of classified reads") + 
+  theme_classic(base_size = 15) + 
+  theme(legend.position = "top", 
+        axis.title = element_text(size = 16), 
+        axis.text = element_text(size = 12)) + 
+  geom_hline(yintercept = 99, colour = "grey")
+ggsave("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/06.DecodingDeePlexiConAndPoreplex/01.Comparison/Our_Method_Cutoff_List.pdf", width = 4, height = 4)
+```
+
+

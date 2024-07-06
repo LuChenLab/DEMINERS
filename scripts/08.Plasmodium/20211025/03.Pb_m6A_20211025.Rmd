@@ -1,0 +1,91 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+```
+
+```{bash}
+for i in RTA-03 RTA-10 RTA-16 RTA-17 RTA-24 RTA-32;
+do 
+    minimap2 -ax splice -t 10 /mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta \
+             /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.fastq | samtools sort -@ 4 | samtools view -b > /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.bam
+done
+
+
+for i in RTA-03 RTA-10 RTA-16 RTA-17 RTA-24 RTA-32;
+do 
+    samtools index /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.bam
+done
+
+
+for i in RTA-03 RTA-10 RTA-16 RTA-17 RTA-24 RTA-32;
+do 
+    nanopolish index -d /mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch4_f5_fq/20211022_1301_MN26652_FAQ89815_36b5e210/fast5_pass \
+                     -s /mnt/raid61/Personal_data/songjunwei/DRS_RTA/batch4_f5_fq/hac_fastq/sequencing_summary.txt \
+                        /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.fastq
+done
+
+
+for i in RTA-10 RTA-16 RTA-17 RTA-24 RTA-32;
+do 
+    nanopolish eventalign -t 1 --scale-events -n \
+                          -r /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.fastq \
+                          -b /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.bam \
+                          -g /mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta > /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.eventalign.tsv
+done
+
+
+for i in RTA-03 RTA-10 RTA-16 RTA-17 RTA-24 RTA-32;
+do 
+    python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/mCaller.py \
+                         -m GATC -r /mnt/raid61/Personal_data/tangchao/Temp/reference/PlasmoDB-53_PbergheiANKA_Genome.fasta \
+                         -d /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/r95_twobase_model_NN_6_m6A.pkl \
+                         -e /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.eventalign.tsv \
+                         -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/$i.fastq -b A 
+done
+
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/RTA-03.eventalign.diffs.6 -d 3 -t 0
+mv /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.methylation.summary.bed RTA-03.methylation.summary.bed
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/RTA-10.eventalign.diffs.6 -d 3 -t 0
+mv /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.methylation.summary.bed RTA-10.methylation.summary.bed
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/RTA-16.eventalign.diffs.6 -d 3 -t 0
+mv /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.methylation.summary.bed RTA-16.methylation.summary.bed
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/RTA-17.eventalign.diffs.6 -d 3 -t 0
+mv /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.methylation.summary.bed RTA-17.methylation.summary.bed
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/RTA-24.eventalign.diffs.6 -d 3 -t 0
+mv /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.methylation.summary.bed RTA-24.methylation.summary.bed
+
+python /mnt/raid61/Personal_data/tangchao/Document/biosoft/mCaller/make_bed.py -f /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq/RTA-32.eventalign.diffs.6 -d 3 -t 0
+mv /mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/08.m6A/01.Plasmodium/20211025/02.methylation.summary.bed RTA-32.methylation.summary.bed
+```
+

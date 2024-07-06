@@ -1,0 +1,136 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r}
+library(data.table)
+library(GenomicFeatures)
+library(GenomicAlignments)
+library(BiocParallel)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r}
+ref <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/fa/PlasmoDB-53_PbergheiANKA_Genome.fasta")
+names(ref) <- gsub("_v3", "", mapply(function(x) x[1], strsplit(names(ref), " \\| ")))
+TxDb <- rtracklayer::readGFFAsGRanges("/mnt/raid61/Personal_data/songjunwei/reference/plasmoDB/gff/PlasmoDB-53_PbergheiANKA.gff")
+TxDb <- TxDb[mapply(length, with(TxDb, Parent)) == 0]
+table(TxDb$type)
+
+ol <- findOverlaps(TxDb, TxDb)
+ol <- ol[queryHits(ol) != subjectHits(ol)]
+TxDb <- TxDb[-queryHits(ol)]
+names(TxDb) <- TxDb$ID
+```
+
+```{r}
+ChrL <- data.table(Chromosome = names(ref), Length = width(ref))
+```
+
+```{r}
+ggplot() + 
+  geom_col(data = ChrL, aes(x = Length, y = Chromosome), colour = "black", fill = "NA") + 
+  scale_x_sqrt()
+```
+
+```{r}
+tro <- coverage(readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/RTA-03.minimap2genome.bam"))
+sch <- coverage(readGAlignments("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/RTA-17.minimap2genome.bam"))
+```
+
+```{r}
+ChrL <- ChrL[Chromosome %in% names(ref)[1:14]]
+ChrL[, Chromosome := factor(Chromosome, levels = names(ref)[1:14])]
+```
+
+```{r}
+DepT_tro <- lapply(seq_along(tro), function(x) data.table(Chromosome = names(tro)[x], Pos = seq_len(length(tro[[x]])), Depth = as.numeric(tro[[x]])))
+DepT_tro <- do.call(rbind, DepT_tro)
+DepT_tro[, Chromosome := gsub("_v3", "", Chromosome)]
+DepT_tro <- DepT_tro[Chromosome %in% names(ref)[1:14]]
+DepT_tro[, Chromosome := factor(Chromosome, levels = names(ref)[1:14])]
+```
+
+```{r fig.width=10, fig.height=10}
+ggplot() + 
+  geom_path(data = DepT_tro, 
+            mapping = aes(Pos, log10(1 + Depth))) + 
+  geom_rect(data = ChrL, 
+            aes(xmin = 0, xmax = Length, ymin = 0, ymax = 3), colour = "black", fill = "NA") + 
+  facet_wrap(facets = ~ Chromosome, ncol = 1, strip.position = "right") + 
+  # scale_y_log10(n.breaks = 3) + 
+  scale_y_continuous(n.breaks = 2, limits = c(0, 3)) +
+  theme_grey(base_size = 15) +
+  theme(strip.text.y = element_text(angle = 0), 
+        panel.background = element_rect(fill = "grey90"), 
+        panel.grid = element_blank()) + 
+  scale_x_continuous(expand = c(0, 0), 
+                     breaks = seq(500000, 2500000, 500000), 
+                     labels = paste0(seq(500000, 2500000, 500000)/1000000, " Mb")) + 
+  labs(x = "Genomic locus", y = "Sequencing depth (log10)", title = "Trophozoite (RTA-03)") -> p1
+p1
+```
+
+```{r}
+DepT_sch <- lapply(seq_along(sch), function(x) data.table(Chromosome = names(sch)[x], Pos = seq_len(length(sch[[x]])), Depth = as.numeric(sch[[x]])))
+DepT_sch <- do.call(rbind, DepT_sch)
+DepT_sch[, Chromosome := gsub("_v3", "", Chromosome)]
+DepT_sch <- DepT_sch[Chromosome %in% names(ref)[1:14]]
+DepT_sch[, Chromosome := factor(Chromosome, levels = names(ref)[1:14])]
+```
+
+```{r fig.width=10, fig.height=10}
+ggplot() + 
+  geom_path(data = DepT_sch, 
+            mapping = aes(Pos, log10(1 + Depth))) + 
+  geom_rect(data = ChrL, 
+            aes(xmin = 0, xmax = Length, ymin = 0, ymax = 3), colour = "black", fill = "NA") + 
+  facet_wrap(facets = ~ Chromosome, ncol = 1, strip.position = "right") + 
+  # scale_y_log10(n.breaks = 3) + 
+  scale_y_continuous(n.breaks = 2, limits = c(0, 3)) +
+  theme_grey(base_size = 15) +
+  theme(strip.text.y = element_text(angle = 0), 
+        panel.background = element_rect(fill = "grey90"), 
+        panel.grid = element_blank()) + 
+  scale_x_continuous(breaks = seq(500000, 2500000, 500000), expand = c(0, 0),
+                     labels = paste0(seq(500000, 2500000, 500000)/1000000, " Mb")) + 
+  labs(x = "Genomic locus", y = "Sequencing depth (log10)", title = "Schizont (RTA-17)") -> p2
+p2
+```
+
+```{r eval=FALSE,fig.width=8.6, fig.height=6}
+t0 <- theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+(p1 + theme(strip.text.y = element_blank())) + (p2 + t0)
+```
+
+```{r fig.width=10, fig.height=6}
+t0 <- theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+pps <- (p1 + theme(strip.text.y = element_blank())) + (p2 + t0)
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/Genome_Coverage.pdf", pps, width = 8.6, height = 6)
+```
+
+```{r fig.width=10, fig.height=6}
+t0 <- theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+pps <- (p2 + theme(strip.text.y = element_blank())) + (p1 + t0)
+ggsave("/mnt/raid61/Personal_data/tangchao/Temp/20211025/05.TranscriptClean/Genome_Coverage2.pdf", pps, width = 8.6, height = 6)
+```
+

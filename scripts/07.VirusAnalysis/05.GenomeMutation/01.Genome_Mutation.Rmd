@@ -1,0 +1,213 @@
+---
+title: "Performance of classifiers"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex", 
+                     base.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(cowplot)
+library(patchwork)
+library(Biostrings)
+library(GenomicRanges)
+library(GenomicAlignments)
+```
+
+```{r}
+SVV_fa <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/ref/SVV.fasta")
+PRRSV_fa <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/ref/PRRSV.fasta")
+Ecoli_fa <- readDNAStringSet("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/ref/Ecoli.fasta")
+```
+
+```{r}
+SVV_gr <- GenomicRanges::GRanges(seqnames = mapply(function(x) x[1], strsplit(names(SVV_fa), " ")), 
+                                 ranges = IRanges(start = 1, width = width(SVV_fa)))
+
+PRRSV_gr <- GenomicRanges::GRanges(seqnames = mapply(function(x) x[1], strsplit(names(PRRSV_fa), " ")), 
+                                   ranges = IRanges(start = 1, width = width(PRRSV_fa)))
+
+Ecoli_gr <- GenomicRanges::GRanges(seqnames = mapply(function(x) x[1], strsplit(names(Ecoli_fa), " ")), 
+                                   ranges = IRanges(start = 1, width = width(Ecoli_fa)))
+```
+
+# 2021-08-11
+
+```{r}
+SVV_bam <- GenomicAlignments::readGAlignments(file = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch1_SVV.bam", 
+                                              param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq", "seq")), use.names = TRUE)
+```
+
+```{r}
+Rep1_depth <- data.table(Patch = "Rep 1", Genome = "SVV", POS = seq_len(length(coverage(SVV_bam)[[1]])), 
+                         Depth = as.numeric(coverage(SVV_bam)[[1]]))
+```
+
+```{r}
+af <- alphabetFrequencyFromBam("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch1_SVV.bam", 
+                               param = Rsamtools::ScanBamParam(which = SVV_gr),
+                               baseOnly = TRUE)
+Rep1_depth <- cbind(Rep1_depth, af)
+Rep1_depth$Ref <- strsplit(as.character(SVV_fa), "")[[1]]
+Rep1_depth <- merge(Rep1_depth, melt.data.table(Rep1_depth[, .(A, C, G, T, POS)], id.vars = "POS", variable.name = "Alt", value.name = "N")[, .SD[which.max(N), ], POS][N != 0, ], by = "POS", all.x = TRUE)
+
+```
+
+
+```{r}
+ggplot(Rep1_depth, aes(x = POS, y = Depth, colour = Depth)) + 
+  geom_line(size = 1) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw()
+```
+
+```{r}
+ggplot(Rep1_depth, aes(x = POS, y = Genome, colour = Depth)) + 
+  geom_line(size = 5) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw()
+```
+
+# 2021-08-25
+
+```{r}
+PRRSV_bam <- GenomicAlignments::readGAlignments(file = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch2_PRRSV.bam", 
+                                                param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq", "seq")), use.names = TRUE)
+```
+
+```{r}
+SVV_bam <- GenomicAlignments::readGAlignments(file = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch2_SVV.bam", 
+                                              param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq", "seq")), use.names = TRUE)
+```
+
+```{r}
+Rep2_depth <- rbind(data.table(Patch = "Rep 2", Genome = "PRRSV", POS = seq_len(length(coverage(PRRSV_bam)[[1]])), 
+                               Depth = as.numeric(coverage(PRRSV_bam)[[1]])), 
+                    data.table(Patch = "Rep 2", Genome = "SVV", POS = seq_len(length(coverage(SVV_bam)[[1]])), 
+                               Depth = as.numeric(coverage(SVV_bam)[[1]])))
+```
+
+```{r}
+af <- rbind(alphabetFrequencyFromBam("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch2_PRRSV.bam", 
+                               param = Rsamtools::ScanBamParam(which = PRRSV_gr),
+                               baseOnly = TRUE),
+            alphabetFrequencyFromBam("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch2_SVV.bam", 
+                               param = Rsamtools::ScanBamParam(which = SVV_gr),
+                               baseOnly = TRUE))
+
+Rep2_depth <- cbind(Rep2_depth, af)
+Rep2_depth$Ref <- c(strsplit(as.character(PRRSV_fa), "")[[1]], strsplit(as.character(SVV_fa), "")[[1]])
+```
+
+
+
+
+```{r}
+ggplot(Rep2_depth[Genome == "PRRSV"], aes(x = POS, y = log10(Depth + 1), colour = log10(Depth + 1))) + 
+  geom_line(size = 1) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw()
+```
+
+# 2021-10-08
+
+```{r}
+Ecoli_bam <- GenomicAlignments::readGAlignments(file = "/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch3_Ecoli.bam", 
+                                                param = Rsamtools::ScanBamParam(what = c("qname", "flag", "mapq", "seq")), use.names = TRUE)
+```
+
+```{r}
+Rep3_depth <- data.table(Patch = "Rep 3", Genome = "Ecoli", POS = seq_len(length(coverage(Ecoli_bam)[[1]])), Depth = as.numeric(coverage(Ecoli_bam)[[1]]))
+```
+
+```{r}
+ggplot(Rep3_depth, aes(x = POS, y = log10(1 + Depth), colour = log10(1 + Depth))) + 
+  geom_line(size = 1) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw()
+```
+
+```{r}
+Reps_depth <- rbind(Rep1_depth, Rep2_depth, Rep3_depth)
+Reps_depth[, LogDepth := log10(1 + Depth)]
+```
+
+```{r fig.height=3, fig.width=10}
+ggplot(Reps_depth[Genome == "SVV"], aes(x = POS, y = Genome, colour = LogDepth)) + 
+  geom_line(size = 5) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw() + 
+  facet_wrap(~ Patch, nrow = 2, strip.position = "right")
+```
+
+```{r fig.height=2, fig.width=4}
+ggplot(Reps_depth[Genome == "SVV"], aes(x = POS, y = LogDepth, colour = LogDepth)) + 
+  geom_line(size = 1) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw() + 
+  facet_wrap(~ Patch, nrow = 2, strip.position = "right") + 
+  theme(legend.position = "none")
+```
+
+```{r fig.height=1.5, fig.width=10}
+ggplot(Reps_depth[Genome == "PRRSV" & Depth != 0], aes(x = POS, y = Genome, colour = LogDepth)) + 
+  geom_line(size = 5) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw() + 
+  facet_wrap(~ Patch, nrow = 2, strip.position = "right")
+```
+
+```{r fig.height=3, fig.width=4}
+ggplot(Reps_depth[Genome == "PRRSV"], aes(x = POS, y = LogDepth, colour = LogDepth)) + 
+  geom_line(size = 1) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw() + 
+  facet_wrap(~ Patch, nrow = 2, strip.position = "right")
+```
+
+```{r fig.height=1, fig.width=8}
+ggplot(Reps_depth[Genome == "Ecoli"], aes(x = POS, y = LogDepth, colour = LogDepth)) + 
+  geom_line(size = 1) + 
+  scale_colour_gradient(low = "#FFF5F0", high = "#67000D") + 
+  theme_bw() + 
+  facet_wrap(~ Patch, nrow = 2, strip.position = "right")
+```
+
+```{r fig.height=1.5, fig.width=10}
+ggplot(Reps_depth[Genome == "Ecoli" & Depth != 0], aes(x = POS, y = Genome, colour = LogDepth)) + 
+  geom_line(size = 5) + 
+  scale_colour_gradient(low = "#FEE0D2", high = "#67000D") + 
+  theme_bw() + 
+  facet_wrap(~ Patch, nrow = 2, strip.position = "right")
+```
+
+```{r}
+GenomicAlignments::alphabetFrequencyFromBam(SVV_bam)
+
+GenomicAlignments::alphabetFrequencyFromBam()
+
+af <- alphabetFrequencyFromBam("/mnt/raid61/Personal_data/songjunwei/DRS_RTA/00Split/align/batch1_SVV.bam", 
+                               param = Rsamtools::ScanBamParam(which = GRanges("NC_011349.1", IRanges(1, 50000))),
+                               baseOnly = TRUE)
+
+```
+
+

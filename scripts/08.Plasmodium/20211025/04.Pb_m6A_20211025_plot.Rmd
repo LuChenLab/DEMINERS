@@ -1,0 +1,149 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(parallel)
+library(caret)
+library(doParallel)
+library(pbapply)
+```
+
+```{r}
+files <- list.files("analysis/08.m6A/01.Plasmodium/20211025/02.SplitFastq", "methylation.summary.bed", full.names = TRUE)
+Mets <- lapply(files, fread)
+names(Mets) <- gsub(".methylation.summary.bed", "", basename(files))
+for(i in seq_along(Mets)) Mets[[i]] <- data.table(Sample = names(Mets)[i], Mets[[i]])
+Mets <- do.call(rbind, Mets)
+colnames(Mets)[2:8] <- c("Seqnames", "Start", "End", "Motif", "MethRatio", "Strand", "Count")
+```
+
+```{r}
+meta <- data.table(Sample = c("RTA-03", "RTA-10", "RTA-16", "RTA-17", "RTA-24", "RTA-32"), 
+                   Stage = c("tro", "tro", "tro", "sch", "sch", "sch"))
+```
+
+```{r}
+Mets[, Stage := plyr::mapvalues(Sample, 
+                                c("RTA-03", "RTA-10", "RTA-16", "RTA-17", "RTA-24", "RTA-32"), 
+                                c("tro", "tro", "tro", "sch", "sch", "sch"))]
+```
+
+```{r fig.width=4, fig.height=4}
+library(ggbeeswarm)
+library(ggpubr)
+ggplot(Mets, aes(x = Sample, y = MethRatio)) + 
+  geom_violin() + 
+  ggbeeswarm::geom_quasirandom()
+
+ggplot(Mets[Count >= 10], aes(x = Stage, y = MethRatio)) + 
+  geom_boxplot() + 
+  stat_compare_means() + 
+  theme_classic(base_size = 15)
+```
+
+
+```{r}
+MethRatio <- dcast.data.table(Mets[Count >= 10], formula = Seqnames + Start + End + Motif + Strand ~ Sample, value.var = "MethRatio")
+MethRatio <- data.frame(MethRatio[, which(grepl("RTA", colnames(MethRatio))), with = FALSE], 
+                        row.names = MethRatio[, paste0(Seqnames, ":", End, ":", Strand)])
+dim(na.omit(MethRatio))
+```
+```{r}
+library(FactoMineR)
+library(factoextra)
+library(ggrepel)
+pca <- PCA(t(na.omit(MethRatio)), ncp = 10, graph = F)
+fviz_screeplot(pca, addlabels = TRUE)
+```
+
+```{r fig.width=5, fig.height=4}
+pca_result <- data.frame(pca$svd$U, Sample = gsub("\\.", "-", colnames(MethRatio)))
+pca_result <- merge(meta, pca_result, by = "Sample")
+
+ggplot(pca_result,aes(x = X1,y = X2, col = Stage))+
+  geom_point(size = 2) + #Size and alpha just for fun
+  geom_text_repel(aes(label = Sample)) +
+  theme_classic(base_size = 15) +
+  # guides(colour = FALSE)+
+  xlab(paste("PC1(",round(pca$eig[,2][1],2),"%)",sep = "")) +
+  ylab(paste("PC2(",round(pca$eig[,2][2],2),"%)",sep = "")) +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r}
+colnames(MethRatio) <- gsub("\\.", "-", colnames(MethRatio))
+```
+
+```{r fig.height=10, fig.width=5}
+library(pheatmap)
+pheatmap(na.omit(MethRatio), 
+         clustering_method = "average", 
+         border_color = NA, 
+         annotation_col = data.frame(meta[, -1], row.names = meta[[1]]), 
+         clustering_distance_cols = "manhattan")
+```
+
+```{r fig.height=5, fig.width=4}
+library(pheatmap)
+pheatmap(na.omit(MethRatio), 
+         clustering_method = "average", 
+         border_color = NA, 
+         show_rownames = FALSE,
+         annotation_col = data.frame(meta[, -1], row.names = meta[[1]]), 
+         clustering_distance_cols = "manhattan")
+```
+
+```{r}
+MethRatio[c("PbANKA_09_v3:432196:+", "PbANKA_12_v3:545184:+"), ]
+```
+
+```{r}
+Mets[, ID := paste0(Seqnames, ":", End, ":", Strand)]
+DM <- Mets[Count >= 10, .(P = tryCatch(wilcox.test(MethRatio ~ Stage)$p.value, error = function(e) 2)), by = ID]
+DM <- DM[P <= 1]
+DM$P.adjust <- p.adjust(DM$P, method = "BH")
+MethRatio_mean <- merge(Mets[Count >= 10 & Stage == "tro", .(MethRatio_tro = mean(MethRatio)), ID], 
+                        Mets[Count >= 10 & Stage == "sch", .(MethRatio_sch = mean(MethRatio)), ID])
+DM <- merge(MethRatio_mean, DM)
+DM <- DM[order(P)]
+DM[, dMeth := abs(MethRatio_tro - MethRatio_sch)]
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

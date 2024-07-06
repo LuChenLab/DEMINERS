@@ -1,0 +1,89 @@
+Metadata-Version: 2.1
+Name: ch-densecall
+Version: 0.0.1
+Home-page: https://github.com/n-damo/densecall
+Author: linlian
+Author-email: 21620151153308@stu.xmu.edu.cn
+Description-Content-Type: text/markdown
+License-File: LICENCE.txt
+Requires-Dist: mappy==2.24
+Requires-Dist: toml==0.10.2
+Requires-Dist: tqdm<5,>4
+Requires-Dist: scipy==1.10.1
+Requires-Dist: numpy~=1.24.2
+Requires-Dist: pysam==0.21.0
+Requires-Dist: parasail==1.3.4
+Requires-Dist: pandas<2,>1
+Requires-Dist: requests~=2.28.2
+Requires-Dist: ont-fast5-api==3.3.0
+Requires-Dist: fast-ctc-decode==0.3.5
+Requires-Dist: python-dateutil==2.8.2
+Requires-Dist: torch==2.0.1
+Requires-Dist: pytorch-ranger==0.1.1
+Requires-Dist: ray[train]==2.9.3
+
+# Densecall
+
+
+Densecall is an open source research basecaller for Oxford Nanopore reads that solely focuses on RNA basecalling.
+
+For anything other than basecaller training or method development please use [Densecall](https://github.com/n-damo/densecall).
+
+```bash
+$ conda create -n densecall python=3.9
+$ conda activate densecall
+$ pip install --upgrade pip
+$ tar zxvf densecall.tar.gz
+$ cd densecall
+$ pip install -r requirements.txt
+$ python setup.py develop
+$ densecall basecaller --amp --output-file basecalls.fastq rna_r9.4.1_hac@v1.0 /data/reads
+```
+Densecall’s basecaller component is compatible with the basecaller of ont-bonito. This means that our trained models can be imported into bonito to perform the basecalling process. To do this, you can install ont-bonito in the extracted folder. Once installed, you can execute the basecalling process using the following command:
+
+```bash
+$ cd ont-bonito-0.7.3
+$ python setup.py develop
+$ cd ..
+$ bonito basecaller densecall/models/rna_r9.4.1_hac@v1.0 /data/reads --rna --batchsize 128 --chunksize 4096 --recursive --overlap 200
+```
+
+## Training your own model
+
+To train a model using your own reads, first preprocess the reads according to rodan[rodan](https://github.com/biodlab/RODAN) and taiyaki[taiyaki](https://github.com/nanoporetech/taiyaki)
+and use the output hdf5 files as the train/valid data for training.
+
+```bash
+$ densecall train --config densecall/models/configs/rna_r9.4.1@v1.toml --data_dir /path/training/rna-train.hdf5  --workdir /data/training/model-dir
+ 
+```
+
+In addition to training a new model from scratch you can also easily fine tune one of the pretrained models.  
+
+```bash
+densecall train --config rna-config.toml --data_dir /path/training/rna-train.hdf5  --workdir /data/training/model-dir --checkpointfile weights_*.tar --epochs 20 --lr 1e-5 --retrain 
+```
+
+
+All training calls use Automatic Mixed Precision to speed up training. To disable this, do not set the `--amp` flag. 
+
+
+
+
+## Interface
+
+ - `densecall train` - train a densecall model.
+ - `densecall basecaller` - basecaller *(`.fast5` -> `.fastq`)*.
+
+### References
+
+ - [Sequence Modeling With CTC](https://distill.pub/2017/ctc/)
+- Li, Y., Zhang, X., Chen, D. (2018). Memory Efficient DenseNet with Improved Multiscale Feature Fusion. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops.
+- Huang, G., Liu, Z., Van Der Maaten, L., & Weinberger, K. Q. (2017). Densely connected convolutional networks. In Proceedings of the IEEE conference on computer vision and pattern recognition (pp. 4700-4708)
+
+### Licence and Copyright
+
+
+
+### Research Release
+

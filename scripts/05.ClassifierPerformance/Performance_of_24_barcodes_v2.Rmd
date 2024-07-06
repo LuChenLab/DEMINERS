@@ -1,0 +1,212 @@
+---
+title: "Performance of 24 barcodes classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = 'center')
+```
+
+```{r}
+library(caret)
+```
+
+# Accuracy validation
+
+```{r}
+load(file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/04.RandomForest/01.ClassifierTraining/BIN_100_24barcodes_Classifier_V2.RData")
+load("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/04.RandomForest/01.ClassifierTraining/RData/BIN_100_24barcodes_TestData_V2.RData")
+```
+
+```{r}
+Fit1
+```
+
+```{r}
+ROC_Tab <- data.frame(obs = TestData$Class, 
+                      predict(Fit1, TestData, type = "prob"), 
+                      pred = predict(Fit1, newdata = TestData))
+```
+
+```{r}
+postResample(pred = ROC_Tab$pred, obs = ROC_Tab$obs)
+```
+
+```{r}
+confusionMatrix(data = ROC_Tab$pred, reference = ROC_Tab$obs)
+```
+
+```{r}
+mean(apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) > 0.2)
+```
+
+```{r}
+ROC_Tab_PPT <- ROC_Tab[apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) > 0.313, ]
+postResample(pred = ROC_Tab_PPT$pred, obs = ROC_Tab_PPT$obs)
+```
+
+```{r}
+lapply(seq(5, 95, 5)/100, function(i) {
+  ReadsPercent <- mean(apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) >= i)*100
+  ROC_Tab_PPT <- ROC_Tab[apply(ROC_Tab[, 3:ncol(ROC_Tab) - 1], 1, max) > i, ]
+  Accu <- postResample(pred = ROC_Tab_PPT$pred, obs = ROC_Tab_PPT$obs)[1]
+  data.frame(ReadsPercent = ReadsPercent, Accuracy = Accu)
+}) -> Cutoff_Select
+Cutoff_Select <- do.call(rbind, Cutoff_Select)
+Cutoff_Select$Cutoff <- seq(5, 95, 5)/100
+```
+
+```{r}
+library(ggplot2)
+ggplot(Cutoff_Select, aes(ReadsPercent, Accuracy)) + 
+  geom_line() + 
+  scale_x_reverse() + 
+  labs(y = "Accuracy", x = "Percentage of successful reads") + 
+  theme_classic() + 
+  theme(legend.position = "none", 
+        axis.title = element_text(size = 16), 
+        axis.text = element_text(size = 12)) + 
+  geom_hline(yintercept = 0.99) + 
+  geom_vline(xintercept = 79)
+```
+
+```{r}
+library(openxlsx)
+Mat <- openxlsx::read.xlsx("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/data/Meta/Barcode_RNA-更正终版.xlsx", sheet = 2)
+Mat <- Mat[, c(1, 2, 5)]
+Mat <- data.table(Barcode = rep(Mat$Barcode, mapply(length, strsplit(Mat$Gene.Name, "/"))), 
+                  Name = rep(Mat$Name, mapply(length, strsplit(Mat$Gene.Name, "/"))), 
+                  Gene = gsub(" ", "", unlist(strsplit(Mat$Gene.Name, "/"))))
+```
+
+```{r}
+intersect(levels(ROC_Tab$obs), Mat[Name %in% c("BC58", "BC78", "D-BC2"), Barcode])
+```
+
+```{r fig.width=6, fig.height=5}
+library(RColorBrewer)
+library(pheatmap)
+sampleDists <- dist(t(ROC_Tab[, 3:ncol(ROC_Tab) - 1]), method = "canberra")
+sampleDistMatrix <- as.matrix(sampleDists)
+colnames(sampleDistMatrix) <- NULL
+row.names(sampleDistMatrix) <- gsub("\\.", "-", row.names(sampleDistMatrix))
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix, 
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors, main = "")
+```
+
+```{r fig.width=6, fig.height=5}
+sampleDists <- dist(t(ROC_Tab[, 3:ncol(ROC_Tab) - 1]), method = "manhattan")
+sampleDistMatrix <- as.matrix(sampleDists)
+colnames(sampleDistMatrix) <- NULL
+row.names(sampleDistMatrix) <- gsub("\\.", "-", row.names(sampleDistMatrix))
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix, 
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors, main = "")
+```
+
+```{r fig.width=6, fig.height=5}
+sampleDists <- dist(t(ROC_Tab[, 3:ncol(ROC_Tab) - 1]), method = "binary")
+sampleDistMatrix <- as.matrix(sampleDists)
+colnames(sampleDistMatrix) <- NULL
+row.names(sampleDistMatrix) <- gsub("\\.", "-", row.names(sampleDistMatrix))
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix, 
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors, main = "")
+```
+
+```{r}
+setDT(ROC_Tab)
+```
+
+```{r}
+Gene_N <- merge(ROC_Tab[, .N, by = obs], ROC_Tab[, .N, by = pred], by.x = "obs", by.y = "pred")
+colnames(Gene_N) <- c("Barcode", "obs", "pred")
+Gene_N <- merge(Gene_N, Mat, by = "Barcode")
+```
+
+```{r fig.width=5.5, fig.height=5}
+library(ggrepel)
+ggplot(Gene_N, aes(x = obs, y = pred)) + 
+  geom_abline(slope = 1) +
+  geom_point() + 
+  theme_classic() + 
+  geom_text_repel(aes(label = Barcode), min.segment.length = 0) + 
+  theme(axis.title = element_text(size = 22), 
+        axis.text = element_text(size = 16))
+```
+
+```{r}
+Misclassified <- ROC_Tab[pred != obs, ]
+```
+
+```{r}
+BCs <- levels(Misclassified$obs)
+
+MisPercent <- lapply(BCs, function(x) Misclassified[obs == x, as.data.frame(prop.table(table(pred)) * 100), ])
+MisPercent <- as.data.table(data.frame(row = rep(BCs, mapply(nrow, MisPercent)), do.call(rbind, MisPercent)))
+colnames(MisPercent)[3] <- "Percent"
+
+MisPercent[, row := factor(row, levels = levels(MisPercent$pred))]
+```
+
+
+```{r}
+MisN <- Misclassified[, .N, by = obs][, N]
+names(MisN) <- Misclassified[, .N, by = obs][, obs]
+
+MisP <- ROC_Tab[, mean(pred != obs), by = obs]$V1
+names(MisP) <- ROC_Tab[, mean(pred != obs), by = obs]$obs
+
+MisNP <- paste0(MisN[BCs], " (", round(MisP[BCs] * 100, 2), "%)")
+names(MisNP) <- BCs
+```
+
+```{r fig.width=11, fig.height=10}
+ggplot(MisPercent, aes(x = as.numeric(pred), y = as.numeric(row), fill = Percent)) + 
+  geom_tile() + 
+  scale_fill_viridis_c(direction = -1) + 
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(), 
+        axis.text.x.bottom = element_text(size = 16, angle = 45, hjust = 1), 
+        axis.text.x.top = element_text(size = 12), 
+        axis.text.y = element_text(size = 16), 
+        plot.title = element_text(size = 16, face = "bold"), 
+        axis.ticks = element_blank(), 
+        legend.position = "top",
+        legend.text = element_text(size = 12), 
+        legend.title = element_text(size = 16)) + 
+  scale_x_continuous(breaks = seq_along(BCs), labels = BCs, sec.axis = dup_axis(labels = MisPercent[, sum(Percent), by = pred][, round(V1)]), expand = c(0, 0)) + 
+  scale_y_continuous(breaks = seq_along(BCs), labels = BCs, sec.axis = dup_axis(labels = MisNP[BCs]), expand = c(0, 0))
+```
+
+```{r}
+conftab <- confusionMatrix(data = ROC_Tab$pred, reference = ROC_Tab$obs)
+```
+
+```{r fig.width=6.4, fig.height=6}
+pheatmap(as.matrix(log10(1 + conftab$table)), cluster_rows = T, cluster_cols = T)
+```
+
+
+
+
+

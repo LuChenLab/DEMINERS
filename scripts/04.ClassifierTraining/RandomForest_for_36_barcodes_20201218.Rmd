@@ -1,0 +1,158 @@
+---
+title: "Using scaled positional signal to train a classifier"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.align = 'center')
+```
+
+```{r required packages}
+library(PorexploreR)
+library(data.table)
+library(rhdf5)
+library(dplyr)
+library(ggplot2)
+library(smoother)
+library(parallel)
+library(spatstat)
+library(changepoint)
+library(segclust2d)
+library(scales)
+```
+
+```{r}
+MyChangePoint <- function(sig, MinLength = 10, ChangePoints = 68, StateStat = "Mean") {
+  if(is.null(StateStat) | is.na(StateStat)) {
+    stop("StateStat must be one of Mean or Median")
+  }
+  
+  if(length(StateStat) != 1) {
+    stop("StateStat must be one of Mean or Median")
+  }
+  
+  if(!is.element(StateStat, c("Mean", "Median"))) {
+    stop("StateStat must be one of Mean or Median")
+  }
+  
+  cp0 <- suppressWarnings(changepoint::cpt.meanvar(data = sig, 
+                                                   Q = ChangePoints, 
+                                                   penalty = "Manual", 
+                                                   method = "BinSeg", 
+                                                   class = FALSE, 
+                                                   minseglen = MinLength, 
+                                                   param.estimates = FALSE, 
+                                                   pen.value = 0.0001)) - 0.5
+  bins <- cut(seq_along(sig), c(0, cp0, length(sig)), include.lowest = T, labels = FALSE)
+  
+  if(StateStat == "Mean") {
+    bin_sig <- as.numeric(by(sig, bins, mean))
+  } else {
+    bin_sig <- as.numeric(by(sig, bins, median))
+  }
+  return(bin_sig)
+}
+```
+
+```{r}
+read2gene <- fread("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/02.BamReadsSplit/read2gene_20201127.txt")
+read2gene[, read := paste("read", read, sep = "_")]
+setkey(read2gene, read)
+```
+
+```{r}
+dir_bs <- "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/03.BarcodeProcessing/01.NormalBarcodeSignal"
+files <- list.files(path = dir_bs, pattern = ".signal", full.names = TRUE)
+
+sigs <- mclapply(FUN = function(x) {
+  load(x)
+  barcode
+}, files, mc.cores = 40)
+sigs <- do.call("c", sigs)
+# sigs <- sigs[mapply(length, sigs) > 3000]
+cat(percent(length(sigs)/nrow(read2gene), 0.01), "reads' barcode signal has been identified.\n")
+```
+
+```{r}
+RTA_tu <- names(tail(sort(read2gene[, table(Barcode)]), 36))
+metaInfo <- read2gene[Barcode %in% RTA_tu, ]
+```
+
+```{r}
+metaInfo <- metaInfo[read %in% names(sigs), ]
+sigs <- sigs[names(sigs) %in% metaInfo$read]
+sort(metaInfo[, table(Barcode)])
+```
+
+```{r}
+set.seed(123)
+TrainingReads <- metaInfo[, .SD[sample(.N, 12000, replace = FALSE), ], by = "Barcode"]
+TrainingReads[, table(Barcode)]
+```
+
+```{r}
+TestReads <- metaInfo[!read %in% TrainingReads$read, ]
+sort(TestReads[, table(Barcode)])
+```
+
+```{r}
+TrainingData <- mclapply(sigs[TrainingReads$read], function(x) MyChangePoint(sig = x, ChangePoints = 98, MinLength = 10, StateStat = "Mean"), mc.cores = 1)
+TrainingData <- as.data.frame(do.call(rbind, TrainingData))
+colnames(TrainingData) <- paste0("BIN", sprintf("%03d", seq_len(ncol(TrainingData))))
+
+stopifnot(identical(row.names(TrainingData), TrainingReads$read))
+
+TrainingData$Class <- factor(TrainingReads$gene)
+print(object.size(TrainingData), units = "Mb")
+
+filei = paste0("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/04.RandomForest/01.ClassifierTraining/RData/BIN_100_36barcodes_TrainingData.RData")
+save(TrainingData, metaInfo, file = filei)
+```
+
+```{r}
+TestData <- mclapply(sigs[TestReads$read], function(x) MyChangePoint(sig = x, ChangePoints = 98, MinLength = 10, StateStat = "Mean"), mc.cores = 1)
+TestData <- as.data.frame(do.call(rbind, TestData))
+colnames(TestData) <- paste0("BIN", sprintf("%03d", seq_len(ncol(TestData))))
+
+stopifnot(identical(row.names(TestData), TestReads$read))
+
+TestData$Class <- factor(TestReads$gene)
+print(object.size(TestData), units = "Mb")
+
+filei = paste0("/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/04.RandomForest/01.ClassifierTraining/RData/BIN_100_36barcodes_TestData.RData")
+save(TestData, metaInfo, file = filei)
+```
+
+```{r}
+library(caret)
+library(doParallel)
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10)
+set.seed(825)
+Fit1 <- train(Class ~ ., data = TrainingData,
+              preProc = c("center", "scale", "YeoJohnson", "nzv"),
+              method = "rf",
+              trControl = fitControl,
+              verbose = FALSE,
+              # to evaluate:
+              # tuneGrid = expand.grid(mtry = 2),
+              tuneLength = 1,
+              metric = "Accuracy",
+              allowParallel = TRUE)
+save(Fit1, file = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex/analysis/04.RandomForest/01.ClassifierTraining/BIN_100_36barcodes_Classifier.RData")
+stopCluster(cl)
+```
+

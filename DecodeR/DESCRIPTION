@@ -1,0 +1,21 @@
+Package: DecodeR
+Type: Package
+Title: Barcode demultiplexing of native RNAs nanopore sequencing
+Version: 0.1.0
+Authors@R: c(person(given = "Chao", family = "Tang", role = c("aut", "cre"), email = "chaotangscu@gmail.com"),
+    person(given = "Lu", family = "Chen", role = c("aut", "ths"), comment = "Adviser of Chao Tang"))
+Maintainer: Chao Tang <chaotangscu@gmail.com>
+Description: This package provides a R solutions for barcode demultiplexing of native RNAs nanopore sequencing.
+License: GPL-3 | file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    changepoint,
+    data.table,
+    parallel,
+    randomForest,
+    rhdf5,
+    smoother
+RoxygenNote: 7.1.1
+Depends: 
+    R (>= 3.6.0)
