@@ -153,7 +153,7 @@ R CMD INSTALL DecodeR_0.1.0.tar.gz
 
 This tutorial will guide you through using DEMINERS for your RNA analysis. It is divided into four main parts: setting up your multiplexing experiment, performing base calling, demultiplexing your reads by barcode, and conducting downstream analysis. 
 
-### 1. Multiplexng experimental workflow
+### 1. Multiplexing experimental workflow
 
 To start your multiplexing experiment, select the appropriate RTA combination from the table below based on the model that fits your experimental design. Ensure you have all the necessary RTAs before beginning your experiment. 
 
@@ -350,7 +350,7 @@ densecall train --config rna-config.toml \
 The `densecall train` command offers these options:
 
 - `--config`: Path to the configuration file (default: rna-config.toml).
-- `--workdir`: Directory where the trained model will be saved (default: model/rodan).
+- `--workdir`: Directory where the trained model will be saved (default: model).
 - `--data_dir`: Directory containing training data, with `train.hdf5` and `valid.hdf5`.
 - `--checkpointfile`: Checkpoint file from which to load the model (default: None).
 - `--start_epoch`: Epoch from which to start when fine-tuning (default: 0).
