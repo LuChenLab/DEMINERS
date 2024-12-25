@@ -147,7 +147,28 @@ Alternatively, you can install `DecodeR` using the source file downloaded from t
 R CMD INSTALL DecodeR_0.1.0.tar.gz
 ```
 
+## <span id="Tutorial">Docker</span>
 
+step-by-step instructions for installing Docker, setting up NVIDIA Docker for GPU support, and running a Docker container.
+
+```shell
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt-get update
+sudo apt-get install -y docker-ce
+
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+sudo apt-get update
+sudo apt-get install -y nvidia-docker2
+sudo systemctl restart docker
+
+docker build -t deminers -f Dockerfile .
+docker run -it --gpus all --rm --name deminers-container deminers
+```
 
 ## <span id="Tutorial">Tutorial</span>
 
@@ -318,8 +339,8 @@ The `densecall basecaller` command includes several options:
 
 ```shell
 bonito basecaller densecall/models/rna_r9.4.1_hac@v1.0 /data/reads \
-									--rna --batchsize 128 --chunksize 4096 \
-									--recursive --overlap 200
+                           --rna --batchsize 128 --chunksize 4096 \
+                           --recursive --overlap 200
 ```
 
 
@@ -333,18 +354,18 @@ and use the output hdf5 files as the train/valid data for training.
 
 ```shell
 densecall train --config densecall/models/configs/rna_r9.4.1@v1.toml \
-								--data_dir /path/training/rna-train.hdf5  \
-								--workdir /data/training/model-dir
+                        --data_dir /path/training/rna-train.hdf5  \
+                        --workdir /data/training/model-dir
 ```
 
 In addition to training a new model from scratch, you can easily fine-tune one of the pretrained models.  
 
 ```bash
 densecall train --config rna-config.toml \
-								--data_dir /path/training/rna-train.hdf5  \
-								--workdir /data/training/model-dir \
-								--checkpointfile weights_*.tar --epochs 20 \
-								--lr 1e-5 --retrain
+                        --data_dir /path/training/rna-train.hdf5  \
+                        --workdir /data/training/model-dir \
+                        --checkpointfile weights_*.tar --epochs 20 \
+                        --lr 1e-5 --retrain
 ```
 
 The `densecall train` command offers these options:

@@ -19,10 +19,11 @@ else:
 
 with open(require_file) as f:
     requirements = [r.split()[0] for r in f.read().splitlines()]
-
-with open('README.md', encoding='utf-8') as f:
-    long_description = f.read()
-
+try:
+    with open('README.md', encoding='utf-8') as f:
+        long_description = f.read()
+except:
+    long_description = ""
 
 setup(
     name=package_name,
