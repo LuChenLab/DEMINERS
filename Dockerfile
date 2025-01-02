@@ -25,8 +25,8 @@ RUN /opt/conda/bin/conda config --add channels https://mirrors.tuna.tsinghua.edu
 /opt/conda/bin/conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/ && \
 /opt/conda/bin/conda config --set show_channel_urls yes
 
-RUN mkdir /DEMINERS-main
-COPY ./* /DEMINERS-main
+RUN mkdir /DEMINERS-main/
+COPY ./* /DEMINERS-main/
 RUN R CMD INSTALL /DEMINERS-main/DecodeR_0.1.0.tar.gz
 
 RUN cd /DEMINERS-main && \ 
