@@ -1,0 +1,354 @@
+sudo apt-get update
+Get:2 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Hit:3 https://linux.teamviewer.com/deb stable InRelease
+Hit:5 https://cdn.oxfordnanoportal.com/apt focal-testing-p2 InRelease
+Hit:4 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy InRelease
+Hit:1 https://cdn.oxfordnanoportal.com/apt jammy-stable InRelease
+Get:6 http://security.ubuntu.com/ubuntu jammy-security/main amd64 DEP-11 Metadata [43.1 kB]
+Get:7 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates InRelease [128 kB]
+Get:8 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 DEP-11 Metadata [208 B]
+Get:9 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 DEP-11 Metadata [125 kB]
+Get:11 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 DEP-11 Metadata [103 kB]
+Get:10 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports InRelease [127 kB]
+Get:12 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/restricted amd64 DEP-11 Metadata [212 B]
+Get:13 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/universe amd64 DEP-11 Metadata [356 kB]
+Get:14 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/multiverse amd64 DEP-11 Metadata [940 B]
+Get:15 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 DEP-11 Metadata [208 B]
+Get:16 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports/main amd64 DEP-11 Metadata [7,048 B]
+Get:17 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports/restricted amd64 DEP-11 Metadata [212 B]
+Get:18 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports/universe amd64 DEP-11 Metadata [17.7 kB]
+Get:19 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports/multiverse amd64 DEP-11 Metadata [212 B]
+Fetched 1,038 kB in 5s (193 kB/s)
+Reading package lists... Done
+W: https://cdn.oxfordnanoportal.com/apt/dists/focal-testing-p2/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: http://cdn.oxfordnanoportal.com/apt/dists/jammy-stable/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+
+
+
+➜  ~ sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+ca-certificates is already the newest version (20240203~22.04.1).
+ca-certificates set to manually installed.
+The following additional packages will be installed:
+  libcurl4 libcurl4-openssl-dev python3-software-properties software-properties-gtk
+Suggested packages:
+  libcurl4-doc libidn11-dev libkrb5-dev libldap2-dev librtmp-dev libssh2-1-dev
+The following NEW packages will be installed:
+  apt-transport-https
+The following packages will be upgraded:
+  curl libcurl4 libcurl4-openssl-dev python3-software-properties software-properties-common software-properties-gtk
+6 upgraded, 1 newly installed, 0 to remove and 283 not upgraded.
+Need to get 985 kB of archives.
+After this operation, 180 kB of additional disk space will be used.
+Get:1 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/universe amd64 apt-transport-https all 2.4.13 [1,510 B]
+Get:2 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 libcurl4-openssl-dev amd64 7.81.0-1ubuntu1.20 [386 kB]
+Get:3 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 curl amd64 7.81.0-1ubuntu1.20 [194 kB]
+Get:4 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 libcurl4 amd64 7.81.0-1ubuntu1.20 [289 kB]
+Get:5 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 software-properties-common all 0.99.22.9 [14.1 kB]
+Get:6 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 software-properties-gtk all 0.99.22.9 [71.3 kB]
+Get:7 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates/main amd64 python3-software-properties all 0.99.22.9 [28.8 kB]
+Fetched 985 kB in 10s (97.9 kB/s)
+Selecting previously unselected package apt-transport-https.
+(Reading database ... 531820 files and directories currently installed.)
+Preparing to unpack .../0-apt-transport-https_2.4.13_all.deb ...
+Unpacking apt-transport-https (2.4.13) ...
+Preparing to unpack .../1-libcurl4-openssl-dev_7.81.0-1ubuntu1.20_amd64.deb ...
+Unpacking libcurl4-openssl-dev:amd64 (7.81.0-1ubuntu1.20) over (7.81.0-1ubuntu1.18) ...
+Preparing to unpack .../2-curl_7.81.0-1ubuntu1.20_amd64.deb ...
+Unpacking curl (7.81.0-1ubuntu1.20) over (7.81.0-1ubuntu1.18) ...
+Preparing to unpack .../3-libcurl4_7.81.0-1ubuntu1.20_amd64.deb ...
+Unpacking libcurl4:amd64 (7.81.0-1ubuntu1.20) over (7.81.0-1ubuntu1.18) ...
+Preparing to unpack .../4-software-properties-common_0.99.22.9_all.deb ...
+Unpacking software-properties-common (0.99.22.9) over (0.99.22.5) ...
+Preparing to unpack .../5-software-properties-gtk_0.99.22.9_all.deb ...
+Unpacking software-properties-gtk (0.99.22.9) over (0.99.22.5) ...
+Preparing to unpack .../6-python3-software-properties_0.99.22.9_all.deb ...
+Unpacking python3-software-properties (0.99.22.9) over (0.99.22.5) ...
+Setting up apt-transport-https (2.4.13) ...
+Setting up python3-software-properties (0.99.22.9) ...
+Setting up libcurl4:amd64 (7.81.0-1ubuntu1.20) ...
+Setting up curl (7.81.0-1ubuntu1.20) ...
+Setting up software-properties-common (0.99.22.9) ...
+Setting up libcurl4-openssl-dev:amd64 (7.81.0-1ubuntu1.20) ...
+Setting up software-properties-gtk (0.99.22.9) ...
+Processing triggers for dbus (1.12.20-2ubuntu4.1) ...
+Processing triggers for shared-mime-info (2.1-2) ...
+Processing triggers for mailcap (3.70+nmu1ubuntu1) ...
+Processing triggers for desktop-file-utils (0.26-1ubuntu3) ...
+Processing triggers for hicolor-icon-theme (0.17-2) ...
+Processing triggers for gnome-menus (3.36.0-1ubuntu3) ...
+Processing triggers for libglib2.0-0:amd64 (2.72.4-0ubuntu2.3) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.8) ...
+Processing triggers for man-db (2.10.2-1) ...
+
+
+➜  ~ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+Warning: apt-key is deprecated. Manage keyring files in trusted.gpg.d instead (see apt-key(8)).
+OK
+Repository: 'deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable'
+Description:
+Archive for codename: jammy components: stable
+More info: https://download.docker.com/linux/ubuntu
+Adding repository.
+Press [ENTER] to continue or Ctrl-c to cancel.
+Adding deb entry to /etc/apt/sources.list.d/archive_uri-https_download_docker_com_linux_ubuntu-jammy.list
+Adding disabled deb-src entry to /etc/apt/sources.list.d/archive_uri-https_download_docker_com_linux_ubuntu-jammy.list
+Ign:1 https://download.docker.com/linux/ubuntu jammy InRelease
+Hit:3 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:4 https://linux.teamviewer.com/deb stable InRelease
+Hit:5 https://cdn.oxfordnanoportal.com/apt focal-testing-p2 InRelease
+Hit:2 https://cdn.oxfordnanoportal.com/apt jammy-stable InRelease
+Ign:1 https://download.docker.com/linux/ubuntu jammy InRelease
+Hit:6 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy InRelease
+Get:1 https://download.docker.com/linux/ubuntu jammy InRelease [48.8 kB]
+Get:7 https://download.docker.com/linux/ubuntu jammy/stable amd64 Packages [42.5 kB]
+Hit:8 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates InRelease
+Hit:9 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports InRelease
+Fetched 91.3 kB in 11s (8,136 B/s)
+Reading package lists... Done
+W: https://cdn.oxfordnanoportal.com/apt/dists/focal-testing-p2/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: http://cdn.oxfordnanoportal.com/apt/dists/jammy-stable/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: https://download.docker.com/linux/ubuntu/dists/jammy/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+
+➜  ~ sudo apt-get update
+Hit:2 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:3 https://linux.teamviewer.com/deb stable InRelease
+Hit:4 https://download.docker.com/linux/ubuntu jammy InRelease
+Hit:5 https://cdn.oxfordnanoportal.com/apt focal-testing-p2 InRelease
+Hit:1 https://cdn.oxfordnanoportal.com/apt jammy-stable InRelease
+Hit:6 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy InRelease
+Hit:7 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates InRelease
+Hit:8 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports InRelease
+Reading package lists... Done
+W: https://download.docker.com/linux/ubuntu/dists/jammy/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: https://cdn.oxfordnanoportal.com/apt/dists/focal-testing-p2/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: http://cdn.oxfordnanoportal.com/apt/dists/jammy-stable/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+
+➜  ~ sudo apt-get install -y docker-ce
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  containerd.io docker-buildx-plugin docker-ce-cli docker-ce-rootless-extras docker-compose-plugin libslirp0 pigz slirp4netns
+Suggested packages:
+  aufs-tools cgroupfs-mount | cgroup-lite
+The following NEW packages will be installed:
+  containerd.io docker-buildx-plugin docker-ce docker-ce-cli docker-ce-rootless-extras docker-compose-plugin libslirp0 pigz slirp4netns
+0 upgraded, 9 newly installed, 0 to remove and 283 not upgraded.
+Need to get 124 MB of archives.
+After this operation, 445 MB of additional disk space will be used.
+Ign:1 https://download.docker.com/linux/ubuntu jammy/stable amd64 containerd.io amd64 1.7.24-1
+Get:2 https://download.docker.com/linux/ubuntu jammy/stable amd64 docker-buildx-plugin amd64 0.19.3-1~ubuntu.22.04~jammy [30.7 MB]
+Get:3 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy/universe amd64 pigz amd64 2.6-1 [63.6 kB]
+Get:4 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy/main amd64 libslirp0 amd64 4.6.1-1build1 [61.5 kB]
+Get:5 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy/universe amd64 slirp4netns amd64 1.0.1-2 [28.2 kB]
+Get:6 https://download.docker.com/linux/ubuntu jammy/stable amd64 docker-ce-cli amd64 5:27.4.1-1~ubuntu.22.04~jammy [15.1 MB]
+Get:7 https://download.docker.com/linux/ubuntu jammy/stable amd64 docker-ce amd64 5:27.4.1-1~ubuntu.22.04~jammy [25.8 MB]
+Get:8 https://download.docker.com/linux/ubuntu jammy/stable amd64 docker-ce-rootless-extras amd64 5:27.4.1-1~ubuntu.22.04~jammy [9,590 kB]
+Get:9 https://download.docker.com/linux/ubuntu jammy/stable amd64 docker-compose-plugin amd64 2.32.1-1~ubuntu.22.04~jammy [12.8 MB]
+Get:1 https://download.docker.com/linux/ubuntu jammy/stable amd64 containerd.io amd64 1.7.24-1 [29.5 MB]
+Fetched 124 MB in 7min 50s (264 kB/s)
+Selecting previously unselected package pigz.
+(Reading database ... 531824 files and directories currently installed.)
+Preparing to unpack .../0-pigz_2.6-1_amd64.deb ...
+Unpacking pigz (2.6-1) ...
+Selecting previously unselected package containerd.io.
+Preparing to unpack .../1-containerd.io_1.7.24-1_amd64.deb ...
+Unpacking containerd.io (1.7.24-1) ...
+Selecting previously unselected package docker-buildx-plugin.
+Preparing to unpack .../2-docker-buildx-plugin_0.19.3-1~ubuntu.22.04~jammy_amd64.deb ...
+Unpacking docker-buildx-plugin (0.19.3-1~ubuntu.22.04~jammy) ...
+Selecting previously unselected package docker-ce-cli.
+Preparing to unpack .../3-docker-ce-cli_5%3a27.4.1-1~ubuntu.22.04~jammy_amd64.deb ...
+Unpacking docker-ce-cli (5:27.4.1-1~ubuntu.22.04~jammy) ...
+Selecting previously unselected package docker-ce.
+Preparing to unpack .../4-docker-ce_5%3a27.4.1-1~ubuntu.22.04~jammy_amd64.deb ...
+Unpacking docker-ce (5:27.4.1-1~ubuntu.22.04~jammy) ...
+Selecting previously unselected package docker-ce-rootless-extras.
+Preparing to unpack .../5-docker-ce-rootless-extras_5%3a27.4.1-1~ubuntu.22.04~jammy_amd64.deb ...
+Unpacking docker-ce-rootless-extras (5:27.4.1-1~ubuntu.22.04~jammy) ...
+Selecting previously unselected package docker-compose-plugin.
+Preparing to unpack .../6-docker-compose-plugin_2.32.1-1~ubuntu.22.04~jammy_amd64.deb ...
+Unpacking docker-compose-plugin (2.32.1-1~ubuntu.22.04~jammy) ...
+Selecting previously unselected package libslirp0:amd64.
+Preparing to unpack .../7-libslirp0_4.6.1-1build1_amd64.deb ...
+Unpacking libslirp0:amd64 (4.6.1-1build1) ...
+Selecting previously unselected package slirp4netns.
+Preparing to unpack .../8-slirp4netns_1.0.1-2_amd64.deb ...
+Unpacking slirp4netns (1.0.1-2) ...
+Setting up docker-buildx-plugin (0.19.3-1~ubuntu.22.04~jammy) ...
+Setting up containerd.io (1.7.24-1) ...
+Created symlink /etc/systemd/system/multi-user.target.wants/containerd.service → /lib/systemd/system/containerd.service.
+Setting up docker-compose-plugin (2.32.1-1~ubuntu.22.04~jammy) ...
+Setting up docker-ce-cli (5:27.4.1-1~ubuntu.22.04~jammy) ...
+Setting up libslirp0:amd64 (4.6.1-1build1) ...
+Setting up pigz (2.6-1) ...
+Setting up docker-ce-rootless-extras (5:27.4.1-1~ubuntu.22.04~jammy) ...
+Setting up slirp4netns (1.0.1-2) ...
+Setting up docker-ce (5:27.4.1-1~ubuntu.22.04~jammy) ...
+Created symlink /etc/systemd/system/multi-user.target.wants/docker.service → /lib/systemd/system/docker.service.
+Created symlink /etc/systemd/system/sockets.target.wants/docker.socket → /lib/systemd/system/docker.socket.
+Processing triggers for man-db (2.10.2-1) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.8) ...
+
+➜  ~ distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+sudo apt-get update
+Warning: apt-key is deprecated. Manage keyring files in trusted.gpg.d instead (see apt-key(8)).
+OK
+deb https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/$(ARCH) /
+#deb https://nvidia.github.io/libnvidia-container/experimental/ubuntu18.04/$(ARCH) /
+deb https://nvidia.github.io/nvidia-container-runtime/stable/ubuntu18.04/$(ARCH) /
+#deb https://nvidia.github.io/nvidia-container-runtime/experimental/ubuntu18.04/$(ARCH) /
+deb https://nvidia.github.io/nvidia-docker/ubuntu18.04/$(ARCH) /
+Ign:1 https://download.docker.com/linux/ubuntu jammy InRelease
+Hit:3 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:4 https://linux.teamviewer.com/deb stable InRelease
+Get:5 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  InRelease [1,484 B]
+Hit:7 https://cdn.oxfordnanoportal.com/apt focal-testing-p2 InRelease
+Get:8 https://nvidia.github.io/nvidia-container-runtime/stable/ubuntu18.04/amd64  InRelease [1,481 B]
+Hit:2 https://cdn.oxfordnanoportal.com/apt jammy-stable InRelease
+Ign:1 https://download.docker.com/linux/ubuntu jammy InRelease
+Hit:6 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy InRelease
+Hit:9 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-updates InRelease
+Get:10 https://nvidia.github.io/nvidia-docker/ubuntu18.04/amd64  InRelease [1,474 B]
+Ign:1 https://download.docker.com/linux/ubuntu jammy InRelease
+Get:11 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  Packages [29.2 kB]
+Get:12 https://nvidia.github.io/nvidia-container-runtime/stable/ubuntu18.04/amd64  Packages [7,416 B]
+Hit:13 http://mirrors.tuna.tsinghua.edu.cn/ubuntu jammy-backports InRelease
+Get:14 https://nvidia.github.io/nvidia-docker/ubuntu18.04/amd64  Packages [4,488 B]
+Hit:1 https://download.docker.com/linux/ubuntu jammy InRelease
+Fetched 45.6 kB in 11s (4,070 B/s)
+Reading package lists... Done
+W: https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: https://cdn.oxfordnanoportal.com/apt/dists/focal-testing-p2/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: http://cdn.oxfordnanoportal.com/apt/dists/jammy-stable/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: https://nvidia.github.io/nvidia-container-runtime/stable/ubuntu18.04/amd64/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: https://nvidia.github.io/nvidia-docker/ubuntu18.04/amd64/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+W: https://download.docker.com/linux/ubuntu/dists/jammy/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+
+➜  ~ sudo apt-get install -y nvidia-docker2
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  libnvidia-container-tools libnvidia-container1 nvidia-container-toolkit nvidia-container-toolkit-base
+The following NEW packages will be installed:
+  libnvidia-container-tools libnvidia-container1 nvidia-container-toolkit nvidia-container-toolkit-base nvidia-docker2
+0 upgraded, 5 newly installed, 0 to remove and 283 not upgraded.
+Need to get 4,056 kB of archives.
+After this operation, 15.7 MB of additional disk space will be used.
+Get:1 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  libnvidia-container1 1.13.5-1 [928 kB]
+Get:2 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  libnvidia-container-tools 1.13.5-1 [24.9 kB]
+Get:3 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  nvidia-container-toolkit-base 1.13.5-1 [2,244 kB]
+Get:4 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  nvidia-container-toolkit 1.13.5-1 [853 kB]
+Get:5 https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/amd64  nvidia-docker2 2.13.0-1 [5,548 B]
+Fetched 4,056 kB in 7min 33s (8,955 B/s)
+Selecting previously unselected package libnvidia-container1:amd64.
+(Reading database ... 532083 files and directories currently installed.)
+Preparing to unpack .../libnvidia-container1_1.13.5-1_amd64.deb ...
+Unpacking libnvidia-container1:amd64 (1.13.5-1) ...
+Selecting previously unselected package libnvidia-container-tools.
+Preparing to unpack .../libnvidia-container-tools_1.13.5-1_amd64.deb ...
+Unpacking libnvidia-container-tools (1.13.5-1) ...
+Selecting previously unselected package nvidia-container-toolkit-base.
+Preparing to unpack .../nvidia-container-toolkit-base_1.13.5-1_amd64.deb ...
+Unpacking nvidia-container-toolkit-base (1.13.5-1) ...
+Selecting previously unselected package nvidia-container-toolkit.
+Preparing to unpack .../nvidia-container-toolkit_1.13.5-1_amd64.deb ...
+Unpacking nvidia-container-toolkit (1.13.5-1) ...
+Selecting previously unselected package nvidia-docker2.
+Preparing to unpack .../nvidia-docker2_2.13.0-1_all.deb ...
+Unpacking nvidia-docker2 (2.13.0-1) ...
+Setting up nvidia-container-toolkit-base (1.13.5-1) ...
+Setting up libnvidia-container1:amd64 (1.13.5-1) ...
+Setting up libnvidia-container-tools (1.13.5-1) ...
+Setting up nvidia-container-toolkit (1.13.5-1) ...
+Setting up nvidia-docker2 (2.13.0-1) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.8) ...
+
+➜  ~ sudo systemctl restart docker
+
+➜  ~ docker -v
+Docker version 27.4.1, build b9d17ea
+
+sudo usermod -aG docker $USER
+
+
+## Switch to user account
+newgrp docker
+docker build -t deminers -f Dockerfile .
+(base) ➜  DEMINERS git:(main) docker build -t deminers -f Dockerfile .
+[+] Building 25.0s (5/21)
+[+] Building 25.9s (5/21)
+[+] Building 3602.6s (22/22) FINISHED
+ => [internal] load build definition from Dockerfile                                                                                                                                         0.0s
+ => => transferring dockerfile: 2.08kB                                                                                                                                                       0.0s
+ => [internal] load .dockerignore                                                                                                                                                            0.0s
+ => => transferring context: 2B                                                                                                                                                              0.0s
+ => [internal] load metadata for docker.io/library/ubuntu:20.04                                                                                                                              0.0s
+ => [internal] load build context                                                                                                                                                            2.6s
+ => => transferring context: 309.68MB                                                                                                                                                        2.5s
+ => [ 1/17] FROM docker.io/library/ubuntu:20.04                                                                                                                                              0.0s
+ => [ 2/17] RUN apt-get update && apt-get upgrade -y                                                                                                                                        38.7s
+ => [ 3/17] RUN apt install -y build-essential liblapack-dev libblas-dev gfortran autoconf automake cmake curl git libtool libcurl4-openssl-dev pkg-config unzip wget zlib1g-dev python3-  243.7s
+ => [ 4/17] RUN apt-get install -y  --no-install-recommends software-properties-common dirmngr                                                                                              23.1s
+ => [ 5/17] RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc                                               4.2s
+ => [ 6/17] RUN  add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/"                                                                            8.0s
+ => [ 7/17] RUN apt-get update                                                                                                                                                               3.6s
+ => [ 8/17] RUN apt install -y --no-install-recommends r-base                                                                                                                              204.3s
+ => [ 9/17] RUN R -e "install.packages(c('changepoint', 'data.table', 'randomForest', 'smoother', 'caret', 'BiocManager'))" &&     R -e "BiocManager::install('rhdf5')"                   2016.0s
+ => [10/17] RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh &&     bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/conda &&     /opt/conda/bin/conda init  79.1s
+ => [11/17] RUN /opt/conda/bin/conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/ && /opt/conda/bin/conda config --add channels https://mirrors.tuna.tsin  2.4s
+ => [12/17] RUN mkdir /DEMINERS-main/                                                                                                                                                        0.5s
+ => [13/17] COPY ./* /DEMINERS-main/                                                                                                                                                         1.4s
+ => [14/17] RUN R CMD INSTALL /DEMINERS-main/DecodeR_0.1.0.tar.gz                                                                                                                           39.5s
+ => [15/17] RUN cd /DEMINERS-main && /opt/conda/bin/conda create -y -n densecall python=3.9  seaborn=0.13.2 && . ~/.bashrc &&  conda activate /opt/conda/envs/densecall &&     pip instal  866.3s
+ => [16/17] RUN cd /                                                                                                                                                                         0.6s
+ => [17/17] WORKDIR /DEMINERS                                                                                                                                                                0.0s
+ => exporting to image                                                                                                                                                                      71.0s
+ => => exporting layers                                                                                                                                                                     71.0s
+ => => writing image sha256:079f829da59acfaea9a55dd3b45448d791ae80d5454b682c9fd309b19527c233                                                                                                 0.0s
+ => => naming to docker.io/library/deminers:latest                                                                                                                                           0.0s
+
+➜  DEMINERS git:(main) docker run -it --gpus all --rm --name deminers-container deminers
+(base) root@0f954f9bb1c3:/DEMINERS#
+(base) root@0f954f9bb1c3:/DEMINERS# R
+
+R version 4.4.2 (2024-10-31) -- "Pile of Leaves"
+Copyright (C) 2024 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(DecodeR)
+>
+> q()
+Save workspace image? [y/n/c]: n
+(base) root@0f954f9bb1c3:/DEMINERS# conda activate densecall
+(densecall) root@0f954f9bb1c3:/DEMINERS# densecall -h
+usage: densecall [-h] [-v] {basecaller,train} ...
+
+optional arguments:
+  -h, --help          show this help message and exit
+  -v, --version       show program's version number and exit
+
+subcommands:
+  valid commands
+
+  {basecaller,train}  additional help
+(densecall) root@0f954f9bb1c3:/DEMINERS#
