@@ -294,19 +294,19 @@ The `DecodeR` command includes several options:
 
 | Option                 | Description                                                  |
 | ---------------------- | ------------------------------------------------------------ |
-| `-I, --fast5`          | Path to the .fast5 file [default = `NULL`]                   |
-| `-M, --model`          | The path of the pretrained model [default = `NULL`]. Utilize pre-trained models for barcode detection available from [Pre-trained demultiplexing models](https://figshare.com/articles/online_resource/DecodeR_Models/22678729). |
-| `--cores`              | Number of cores to use (maximum number of simultaneous child processes) [default = `1`] |
-| `-t, --cutoff`         | Cutoff for minimum probability for classified reads (higher for accuracy, lower for recovery) [default = `0`] |
+| `-I, --fast5`          | Path to the input .fast5 file [default = `NULL`]             |
+| `-M, --model`          | Pre-trained barcode prediction model. [default = `NULL`]. Utilize pre-trained models for barcode detection available from [Pre-trained demultiplexing models](https://figshare.com/articles/online_resource/DecodeR_Models/22678729). |
+| `--cores`              | Number of CPU cores to use for parallel processing [default = `1`] |
+| `-t, --cutoff`         | Minimum probability threshold [0-1] for classified reads (higher for accuracy, lower for recovery) [default = `0`] |
 | `-l, --include.lowest` | Include lowest probability reads [default = `FALSE`]         |
 | `-O, --output_file`    | Path and filename for output [default = `NULL`]              |
 | `-h, --help`           | Show this help message and exit                              |
 
 #### **Distributed R-based Workflow**
 
-##### Step 1: Barcode prediction
+#### Step 1: Barcode prediction
 
-Utilize pre-trained models for barcode detection available from [Pre-trained demultiplexing models](https://figshare.com/articles/online_resource/DecodeR_Models/22678729). Predict the barcode using `DecodeR` as shown:
+Predict the barcode using `DecodeR` as shown:
 
 ```R
 library(DecodeR)
@@ -325,14 +325,14 @@ The **DecodeR()** function includes several important parameters:
 
 | Argument         | Description                                                  |
 | ---------------- | ------------------------------------------------------------ |
-| `fast5`          | Path to the input **Fast5** file.                            |
-| `model`          | Pre-trained barcode prediction model.                        |
+| `fast5`          | Path to the input .fast5 file.                               |
+| `model`          | Pre-trained barcode prediction model. Utilize pre-trained models for barcode detection available from [Pre-trained demultiplexing models](https://figshare.com/articles/online_resource/DecodeR_Models/22678729). |
 | `NT`             | Number of CPU cores to use for parallel processing.          |
-| `cutoff`         | Minimum probability threshold [0-1] for classified reads (higher for accuracy, lower for recall). |
+| `cutoff`         | Minimum probability threshold [0-1] for classified reads (higher for accuracy, lower for recovery). |
 | `include.lowest` | Whether to include the lowest probability reads in classification. |
 | `clear`          | If `TRUE`, performs a clean output.                          |
 
-##### Step 2: Handing output formats
+#### Step 2: Handing output formats
 
 Inspect the prediction output and histogram of probabilities:
 
@@ -364,7 +364,7 @@ table(pred2$Barcode)
 #          37           19            2
 ```
 
-##### Step 3: File splitting
+#### Step 3: File splitting
 
 Split the `.fastq` files using `ShortRead`:
 
@@ -385,8 +385,6 @@ for(i in seq_along(R2B)) {
 | `fastq/RTA-33.fastq`       | 22 KB     | Sequences that were classified as `RTA-33` barcode.    |
 | `fastq/RTA-35.fastq`       | 9 KB      | Sequences that were classified as `RTA-35` barcode.    |
 | `fastq/unclassified.fastq` | 1 KB      | Sequences that could not be classified as any barcode. |
-
-
 
 ##### Version Information
 
