@@ -1,0 +1,141 @@
+---
+title: "Performance of classifiers"
+author: "Chao Tang"
+date: 'Report created: `r Sys.Date()`'
+output: 
+  html_document: 
+    code_folding: "hide"
+    toc: true
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = FALSE, 
+                      message = FALSE, 
+                      fig.align = 'center')
+knitr::opts_knit$set(root.dir = "/mnt/raid5/Personal/tangchao/project/Nanopore/BarcodeDecomplex")
+```
+
+```{r required packages}
+library(data.table)
+library(ggplot2)
+library(caret)
+library(multiROC)
+library(pROC)
+library(parallel)
+library(cowplot)
+library(patchwork)
+```
+
+
+## Running time
+
+
+```{r}
+files <- list.files("/mnt/raid61/Personal_data/tangchao/DecodeR/BarcodeDecomplex/analysis/10.MethodComparison/05.RunningTime/DecodeR", "log", full.names = T)
+Mem <- mapply(files, FUN = function(i) {
+  tryCatch(as.numeric(strsplit(grep("Maximum resident set size", fread(i)[-1, ][[2]], value = T), ":")[[1]][2]), error = function(e) NA)
+})
+Mem_DecodeR <- data.table(Method = "DEMIENRS", Reads = as.numeric(gsub(".log", "", gsub("DecodeR_output_", "", basename(files)))), Mem = Mem)
+
+files <- list.files("/mnt/raid61/Personal_data/tangchao/DecodeR/BarcodeDecomplex/analysis/10.MethodComparison/05.RunningTime/deeplexicon", "log", full.names = T)
+Mem <- mapply(files, FUN = function(i) {
+   tryCatch(as.numeric(strsplit(grep("Maximum resident set size", fread(i)[-1, ][[2]], value = T), ":")[[1]][2]), error = function(e) NA)
+})
+Mem_deeplexicon <- data.table(Method = "DeePlexiCon", Reads = as.numeric(gsub(".log", "", gsub("deeplexicon_output_", "", basename(files)))), Mem = Mem)
+
+Mem <- rbind(Mem_deeplexicon, Mem_DecodeR)
+Mem[, Reads := Reads * 4000]
+```
+
+```{r fig.width=6, fig.height=4}
+ggplot(Mem[Reads <= 480000], aes(Reads/1e6, Mem / 1024 / 1024, colour = Method)) + 
+  geom_line(size = 1) + 
+  labs(x = "Number of reads (Million)", y = "Maximum memory consumption (GB)") + 
+  scale_color_manual(values = c("#F2913C", "#D5231E"), guide = guide_legend(reverse = T, )) + 
+  # scale_y_log10() + 
+  theme_bw(base_size = 15) + 
+  theme(legend.title = element_blank(), 
+        legend.position = c(0.8, 0.8), 
+        legend.background = element_blank(), 
+        legend.box.background = element_blank()) -> p1
+p1
+```
+
+```{r eval=FALSE}
+ggsave("/mnt/raid61/Personal_data/tangchao/DecodeR/BarcodeDecomplex/analysis/10.MethodComparison/06.ROC/Memory.pdf", plot = p1, width = 8.5, height = 4.5)
+```
+
+
+```{r}
+files <- list.files("/mnt/raid61/Personal_data/tangchao/DecodeR/BarcodeDecomplex/analysis/10.MethodComparison/05.RunningTime/DecodeR", "log", full.names = T)
+CPU <- mapply(files, FUN = function(i) {
+  tryCatch(trimws(strsplit(grep("Percent of CPU this", fread(i)[-1, ][[2]], value = T), ":")[[1]][2]), error = function(e) NA)
+})
+CPU_DecodeR <- data.table(Method = "DEMIENRS", Reads = as.numeric(gsub(".log", "", gsub("DecodeR_output_", "", basename(files)))), CPU = CPU)
+
+files <- list.files("/mnt/raid61/Personal_data/tangchao/DecodeR/BarcodeDecomplex/analysis/10.MethodComparison/05.RunningTime/deeplexicon", "log", full.names = T)
+CPU <- mapply(files, FUN = function(i) {
+  tryCatch(trimws(strsplit(grep("Percent of CPU this", fread(i)[-1, ][[2]], value = T), ":")[[1]][2]), error = function(e) NA)
+})
+CPU_deeplexicon <- data.table(Method = "DeePlexiCon", Reads = as.numeric(gsub(".log", "", gsub("deeplexicon_output_", "", basename(files)))), CPU = CPU)
+
+CPU <- rbind(CPU_deeplexicon, CPU_DecodeR)
+CPU[, Reads := Reads * 4000]
+CPU[, CPU := as.numeric(gsub("%", "", CPU))]
+CPU[, Method := factor(Method, levels = c("DeePlexiCon", "DEMIENRS"))]
+```
+
+```{r fig.width=6, fig.height=4}
+ggplot(CPU[Reads <= 480000], aes(Reads/1e6, CPU, colour = Method)) + 
+  geom_line(size = 1) + 
+  labs(x = "Number of reads (Million)", y = "CPU usage (%)") + 
+  scale_color_manual(values = c("#F2913C", "#D5231E"), guide = guide_legend(reverse = T, )) + 
+  # scale_y_log10() + 
+  theme_bw(base_size = 15) + 
+  theme(legend.title = element_blank(), 
+        legend.position = c(0.8, 0.8), 
+        legend.background = element_blank(), 
+        legend.box.background = element_blank()) -> p2
+p2
+```
+
+```{r eval=FALSE}
+ggsave("/mnt/raid61/Personal_data/tangchao/DecodeR/BarcodeDecomplex/analysis/10.MethodComparison/06.ROC/CPU.pdf", plot = p2, width = 8.5, height = 4.5)
+```
+
+```{r}
+library(ggpubr)
+ggplot(Mem, aes(Reads/1e6, Mem / 1024, colour = Method)) + 
+  geom_line(size = 1) + 
+  labs(x = "Number of reads (Million)", y = "Maximum memory consumption (MB)") + 
+  theme_classic(base_size = 15) + 
+  scale_color_manual(values = c("#F8766D", "#00BFC4")) + 
+  facet_wrap(~ Method) +
+  stat_cor() + 
+  stat_regline_equation(aes(label = paste(..eq.label.., ..adj.rr.label.., sep = "~`,`~\n")), label.y = c(80, 70)) + 
+  theme(legend.position = "none")
+```
+
+```{r}
+mean(dcast(Mem, Reads ~ Method)[, DeePlexiCon/DEMIENRS], na.rm = T)
+sd(dcast(Mem, Reads ~ Method)[, DeePlexiCon/DEMIENRS], na.rm = T)
+```
+
+
+```{r}
+ggplot(Mem, aes(Reads/1e6, Mem / 1024, colour = Method)) + 
+  geom_line(size = 1) + 
+  labs(x = "Number of reads (Million)", y = "Maximum memory consumption (MB)") + 
+  theme_classic(base_size = 15) + 
+  scale_color_manual(values = c("#F8766D", "#00BFC4")) + 
+  # facet_wrap(~ Method) +
+  # stat_cor() +
+  # stat_regline_equation(aes(label = paste(..eq.label.., ..adj.rr.label.., sep = "~`,`~\n")), label.y.npc = 0.25)
+```
+
+
