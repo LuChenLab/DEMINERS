@@ -77,7 +77,109 @@ sudo apt-get update
 sudo apt-get install r-base r-base-dev
 ```
 
+
+
 ## <span id="Installation">Installation</span>
+
+This guide provides step-by-step instructions for two installation methods:
+
+1. **Docker Installation** — for an easy, containerized setup.
+
+​	We provided a Docker image on Docker Hub that you can pull and run directly.
+
+```shell
+docker pull lianlin/deminers:latest
+docker run -it --gpus all --rm --name deminers-container lianlin/deminers
+```
+
+2. **Manual Installation** — for installing Densecall and DecodeR manually.
+
+
+
+### 1. **Docker Installation**
+
+Follow the steps below to install Docker, set up NVIDIA Docker for GPU support, and run a Docker container.
+
+- **Note 1:** If Docker is not installed on your system, you can install it by following the instructions in the [official Docker documentation](https://docs.docker.com/engine/install/).
+- **Note 2:** For GPU support in Docker, refer to the [Docker GPU support guide](https://docs.docker.com/desktop/features/gpu/) and the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+- **Note 3:** For detailed docker installation logs, see [log file]( ./doc/Install_docker_test2_log.txt).
+
+#### Step 1: Install Docker
+
+Run the following commands to install Docker on Ubuntu:
+
+```shell
+# Update package list and install dependencies
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+
+# Add Docker’s official GPG key
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+# Set up Docker’s stable repository
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+
+# Update package list again and install Docker
+sudo apt-get update
+sudo apt-get install -y docker-ce
+```
+
+#### Step 2: Install NVIDIA Docker (for GPU support)
+
+To enable GPU support in Docker, follow these steps:
+
+```shell
+# Set up the distribution for NVIDIA Docker
+distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+
+# Add NVIDIA's GPG key
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+
+# Set up the NVIDIA Docker repository
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+# Update package list and install NVIDIA Docker
+sudo apt-get update
+sudo apt-get install -y nvidia-docker2
+
+# Restart Docker service to apply changes
+sudo systemctl restart docker
+```
+
+#### Step 3: Run the Docker Container
+
+You can now pull directly and run a Docker container with GPU support:
+
+```shell
+# Switch to the Docker group (to run Docker without sudo)
+newgrp docker
+
+# Pull the Docker image
+docker pull lianlin/deminers:latest
+
+# Run the Docker container with GPU support
+docker run -it --gpus all --rm --name deminers-container lianlin/deminers
+```
+
+#### (Optional): Build Docker Locally (if pull fails)
+
+If you encounter a "Timeout exceeded" error while pulling the image, you can build the Docker image locally instead:
+
+```shell
+# Build the Docker image from the Dockerfile
+docker build -t deminers -f Dockerfile .
+
+# Run the Docker container with GPU support
+docker run -it --gpus all --rm --name deminers-container deminers
+```
+
+
+
+------
+
+### 2. **Manual Installation (Densecall and DecodeR)**
+
+If you prefer to install **Densecall** and **DecodeR** manually, follow these steps:
 
 ### Densecall
 
@@ -147,28 +249,7 @@ Alternatively, you can install `DecodeR` using the source file downloaded from t
 R CMD INSTALL DecodeR_0.1.0.tar.gz
 ```
 
-## <span id="Tutorial">Docker</span>
 
-step-by-step instructions for installing Docker, setting up NVIDIA Docker for GPU support, and running a Docker container.
-
-```shell
-sudo apt-get update
-sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-sudo apt-get update
-sudo apt-get install -y docker-ce
-
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-sudo apt-get update
-sudo apt-get install -y nvidia-docker2
-sudo systemctl restart docker
-
-docker build -t deminers -f Dockerfile .
-docker run -it --gpus all --rm --name deminers-container deminers
-```
 
 ## <span id="Tutorial">Tutorial</span>
 

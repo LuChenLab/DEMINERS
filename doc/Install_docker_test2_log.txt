@@ -281,6 +281,35 @@ sudo usermod -aG docker $USER
 
 ## Switch to user account
 newgrp docker
+
+
+###### pull directly ###### 
+~ docker pull lianlin/deminers:latest
+latest: Pulling from lianlin/deminers
+86e5016c2693: Pull complete
+83fbe3ae8ebe: Pull complete
+f6a971285976: Pull complete
+68e81e1c3a6e: Pull complete
+bbb95ab972bd: Pull complete
+836d1c24efc3: Pull complete
+52a50aaea06f: Pull complete
+4895d8e766f3: Pull complete
+7b931c43ba82: Pull complete
+060bf0d8b7ea: Pull complete
+fe363c4635a1: Pull complete
+cb916e1552b9: Pull complete
+3009568e7f44: Pull complete
+689eda10c905: Pull complete
+aabb2d5dc2c2: Pull complete
+4f4fb700ef54: Pull complete
+5d5077398c18: Pull complete
+Digest: sha256:1c27ef4ac7416a0408681d3811da17b631990c779033c904ef0023ae17b19a24
+Status: Downloaded newer image for lianlin/deminers:latest
+docker.io/lianlin/deminers:latest
+########################### 
+
+
+###### build locally ###### 
 docker build -t deminers -f Dockerfile .
 (base) ➜  DEMINERS git:(main) docker build -t deminers -f Dockerfile .
 [+] Building 25.0s (5/21)
@@ -314,6 +343,7 @@ docker build -t deminers -f Dockerfile .
  => => exporting layers                                                                                                                                                                     71.0s
  => => writing image sha256:079f829da59acfaea9a55dd3b45448d791ae80d5454b682c9fd309b19527c233                                                                                                 0.0s
  => => naming to docker.io/library/deminers:latest                                                                                                                                           0.0s
+########################### 
 
 ➜  DEMINERS git:(main) docker run -it --gpus all --rm --name deminers-container deminers
 (base) root@0f954f9bb1c3:/DEMINERS#
