@@ -29,7 +29,7 @@ Overall, DEMINERS is a simple, robust and high-throughput DRS method for accurat
 
 1. A multiplexing experimental workflow and the associated classifier named `DecodeR` utilizing a machine-learning algorithm based on Random Forest (**Fig. a, b**).
 
-2. A novel base-caller named `Densecall` is built on an optimized DenseNet-inspired convolutional neural network (**Fig. c**).
+2. A novel basecaller named `Densecall` is built on an optimized DenseNet-inspired convolutional neural network (**Fig. c**).
 
 3. The downstream data analysis for comprehensive isoform profiling, RNA variant and modification identification, and metagenomic and RNA virome analyses (**Fig. d**).
 
@@ -85,10 +85,14 @@ This guide provides step-by-step instructions for two installation methods:
 
 1. **Docker Installation** — for an easy, containerized setup.
 
-​	We provided a Docker image on Docker Hub that you can pull and run directly.
+​	We provide two separate Docker images on Docker Hub to ensure compatibility with ARM64 and AMD64 platforms, which you can directly extract and run.
 
 ```shell
-docker pull lianlin/deminers:latest
+# for ARM64 platform
+docker pull lianlin/deminers:deminers-arm64
+# for AMD64 platform
+docker pull lianlin/deminers:deminers-amd64
+
 docker run -it --gpus all --rm --name deminers-container lianlin/deminers
 ```
 
@@ -155,7 +159,10 @@ You can now pull directly and run a Docker container with GPU support:
 newgrp docker
 
 # Pull the Docker image
-docker pull lianlin/deminers:latest
+	## for ARM64 platform
+	docker pull lianlin/deminers:deminers-arm64
+	## for AMD64 platform
+	docker pull lianlin/deminers:deminers-amd64
 
 # Run the Docker container with GPU support
 docker run -it --gpus all --rm --name deminers-container lianlin/deminers
