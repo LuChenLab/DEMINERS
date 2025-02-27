@@ -1,0 +1,48 @@
+[model]
+package = "densecall.ctc"
+
+[cnn]
+type = "choice"
+growth_rate = 32
+block_config = [6, 12, 24, 16]
+num_init_features = 64
+bn_size = 16
+kernel_size = 7
+stride = 10
+groups = 1
+codensenet = 0
+
+[tstride]
+type='list'
+tstride = [1, 1, 1, 1, 1]
+
+
+[encoder]
+type='choice'
+rnn = 0
+num_layers = 1
+features = 768
+
+[drop]
+type = 'float'
+drop_rate = 0.0
+
+[decoder]
+type = 'str'
+decoder_type = 'ctc'
+
+[optimizer]
+type = 'float'
+lr = 0.001
+
+
+[basecaller]
+chunksize = 4096
+overlap = 0
+batchsize = 32
+quantize = 1
+alphabet = 'NACGT'
+
+[qscore]
+bias = 0.0
+scale = 1.0

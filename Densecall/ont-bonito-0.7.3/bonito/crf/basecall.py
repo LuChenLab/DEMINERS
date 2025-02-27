@@ -4,7 +4,7 @@ Bonito CRF basecalling
 
 import torch
 import numpy as np
-from koi.decode import beam_search, to_str
+#from koi.decode import beam_search, to_str
 
 from bonito.multiprocessing import thread_iter
 from bonito.util import chunk, stitch, batchify, unbatchify, half_supported

@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 import toml
 import torch
-import koi.lstm
+#import koi.lstm
 import parasail
 import numpy as np
 from torch.cuda import get_device_capability
